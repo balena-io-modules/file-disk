@@ -1,0 +1,22 @@
+{
+  "name": "resin-file-disk",
+  "version": "0.0.1",
+  "description": "Handles reads / writes on disk image files.",
+  "author": "Petros Angelatos <petrosagg@resin.io>",
+  "contributors": [
+    "Alexis Svinartchouk <alexis@resin.io>",
+    "Petros Angelatos <petrosagg@resin.io>"
+  ],
+  "license": "Apache-2.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha"
+  },
+  "devDependencies": {
+    "mocha": "^2.2.5"
+  },
+  "dependencies": {
+    "bluebird": "^3.5.0",
+    "interval-intersection": "1.0.0"
+  }
+}

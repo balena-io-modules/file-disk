@@ -115,6 +115,7 @@ describe('file-disk', function() {
 		.spread(function(count, buf2) {
 			assert.strictEqual(count, buf2.length);
 			assert(buf.equals(buf2));
+			return disk.requestAsync(FLUSH, null, null, null);
 		})
 	}
 

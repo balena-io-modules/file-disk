@@ -29,12 +29,26 @@ function createCowDisk() {
 	return new filedisk.FileDisk(
 		DISK_PATH,
 		mapping,
-		{ readOnly: true, recordWrites: true }
+		true,  // readOnly
+		true  // recordWrites
+	);
+}
+
+function createS3CowDisk() {
+	return new filedisk.S3Disk(
+		mapping,
+		'bucket',
+		'zeros',
+		'access_key',
+		'secret_key',
+		'http://0.0.0.0:9042',
+		false
 	);
 }
 
 function testOnAllDisks(fn) {
-	return Promise.all([ createDisk(), createCowDisk() ].map(fn));
+	const disks = [ createDisk(), createCowDisk(), createS3CowDisk() ];
+	return Promise.all(disks.map(fn));
 }
 
 describe('file-disk', function() {
@@ -57,6 +71,17 @@ describe('file-disk', function() {
 			assert.strictEqual(err.code, 'ENOENT');
 			done();
 		})
+	});
+
+	function testGetCapacity(disk) {
+		return disk.getCapacityAsync()
+		.spread(function(size) {
+			assert.strictEqual(size, 10240);
+		})
+	}
+
+	it('getCapacity should return the disk size', function() {
+		return testOnAllDisks(testGetCapacity);
 	});
 
 	function readRespectsLength(disk) {

@@ -1,5 +1,6 @@
 'use strict';
 
+const aws = require('aws-sdk');
 const EventEmitter = require('events');
 const fs = require('fs');
 const iisect = require('interval-intersection');
@@ -20,6 +21,7 @@ class DiskWrite {
 	}
 
 	merge(other) {
+		// `other` must be an overlapping `DiskWrite`
 		const buffers = [];
 		if (other.start < this.start) {
 			buffers.push(other.buffer.slice(0, this.start - other.start));
@@ -40,19 +42,44 @@ class DiskWrite {
 	}
 }
 
-class FileDisk extends EventEmitter {
-	constructor(path, mapping, options) {
-		options = (options === undefined) ? {} : options;
+class Disk extends EventEmitter {
+	// Subclasses need to implement:
+	// * constructor() that should call `this._ready()` when the disk is ready;
+	// * _getCapacity(callback)
+	// * _read(buffer, bufferOffset, length, fileOffset, callback)
+	// * _write(buffer, bufferOffset, length, fileOffset, callback)
+	// * _flush(callback)
+	// * _discard(offset, length, buffer, callback)
+	constructor(mapping, readOnly, recordWrites) {
 		super();
-		this.path = path;
 		this._prepareMapping(mapping);
-		this._fd = null;
 		this._err = null;
-		this.readOnly = options.readOnly || false;
-		this.recordWrites = options.recordWrites || false;
+		this._isReady = false;
+		this.readOnly = readOnly;
+		this.recordWrites = recordWrites;
 		this.writes = []  // sorted list of non overlapping DiskWrites
-		this._open();
 	};
+
+	_ready() {
+		this._isReady = true;
+		this.emit('ready');
+	}
+
+	_callWhenReady(method, args) {
+		method = method.bind(this);
+		if (!this._isReady) {
+			this.once('ready', function() {
+				if (this._err) {
+					const callback = args[args.length - 1];
+					callback(this._err);
+					return;
+				}
+				method.apply(this, args);
+			});
+			return;
+		}
+		method.apply(this, args);
+	}
 
 	_prepareMapping(mapping) {
 		this.mapping = {}
@@ -70,29 +97,13 @@ class FileDisk extends EventEmitter {
 		}
 	}
 
-	_open() {
-		const self = this;
-		const mode = this.readOnly ? 'r' : 'r+';
-		fs.open(this.path, mode, function(err, fd) {
-			if (err) {
-				self._fd = -1;
-				self._err = err;
-			} else {
-				self._fd = fd;
-			}
-			self.emit('open')
-		});
-	};
-
 	_requestRead(offset, length, buffer, callback) {
 		// Reads `length` bytes starting at `offset` into `buffer`
 		if (this.readOnly && this.recordWrites) {
 			const plan = this._createReadPlan(buffer, offset, length);
-			this._readAccordingToPlan(buffer, plan, function(err, count, buf) {
-				callback(err, count, buf);
-			});
+			this._readAccordingToPlan(buffer, plan, callback);
 		} else {
-			fs.read(this._fd, buffer, 0, length, offset, callback);
+			this._read(buffer, 0, length, offset, callback);
 		}
 	};
 
@@ -104,12 +115,16 @@ class FileDisk extends EventEmitter {
 		if (this.readOnly) {
 			callback(null, length, buffer);
 		} else {
-			fs.write(this._fd, buffer, 0, length, offset, callback);
+			this._write(buffer, 0, length, offset, callback);
 		}
 	};
 
 	_requestFlush(offset, length, buffer, callback) {
-		fs.fdatasync(this._fd, callback);
+		if (!this.readOnly) {
+			this._flush(callback);
+		} else {
+			callback(null);
+		}
 	};
 	
 	_requestDiscard(offset, length, buffer, callback) {
@@ -118,23 +133,13 @@ class FileDisk extends EventEmitter {
 	};
 
 	request(type, offset, length, buffer, callback) {
-		if (typeof this._fd !== 'number') {
-			this.once('open', function() {
-				if (this._err) {
-					callback(this._err);
-					return;
-				}
-				// We want to call this request method, not one defined by a
-				// subclass.
-				const thisMethod = FileDisk.prototype.request.bind(this);
-				thisMethod(type, offset, length, buffer, callback);
-			});
-			return;
-		}
-		if (this._err) {
-			callback(this._err);
-			return;
-		}
+		this._callWhenReady(
+			this._request,
+			[type, offset, length, buffer, callback]
+		);
+	}
+
+	_request(type, offset, length, buffer, callback) {
 		const method = this.mapping[type];
 		if (method) {
 			method.bind(this)(offset, length, buffer, callback);
@@ -144,30 +149,8 @@ class FileDisk extends EventEmitter {
 	};
 
 	getCapacity(callback) {
-		if (typeof this._fd !== 'number') {
-			this.once('open', function() {
-				if (this._err) {
-					callback(this._err);
-					return;
-				}
-				// We want to call this getCapacity method, not one defined by
-				// a subclass.
-				FileDisk.prototype.getCapacity.bind(this)(callback);
-			});
-			return;
-		}
-		if (this._err) {
-			callback(this._err);
-			return;
-		}
-		fs.fstat(this._fd, function (err, stat) {
-			if (err) {
-				callback(err);
-				return;
-			}
-			callback(null, stat.size);
-		});
-	};
+		this._callWhenReady(this._getCapacity, [callback]);
+	}
 
 	_insertDiskWrite(w) {
 		if (this.writes.length === 0) {
@@ -248,7 +231,7 @@ class FileDisk extends EventEmitter {
 				chunksLeft--;
 			} else {
 				const length = entry[1] - entry[0] + 1;
-				fs.read(this._fd, buffer, offset, length, entry[0], function(err) {
+				this._read(buffer, offset, length, entry[0], function(err) {
 					if (err) {
 						if (!failed) {
 							callback(err.errno);
@@ -266,4 +249,100 @@ class FileDisk extends EventEmitter {
 	}
 }
 
+class FileDisk extends Disk {
+	constructor(path, mapping, readOnly, recordWrites) {
+		super(mapping, readOnly, recordWrites);
+		this.path = path;
+		this._fd = null;
+
+		const self = this;
+		const mode = this.readOnly ? 'r' : 'r+';
+		fs.open(this.path, mode, function(err, fd) {
+			if (err) {
+				self._err = err;
+			} else {
+				self._fd = fd;
+			}
+			self._ready();
+		});
+	};
+
+	_getCapacity(callback) {
+		fs.fstat(this._fd, function (err, stat) {
+			if (err) {
+				callback(err);
+				return;
+			}
+			callback(null, stat.size);
+		});
+	};
+
+	_read(buffer, bufferOffset, length, fileOffset, callback) {
+		fs.read(this._fd, buffer, bufferOffset, length, fileOffset, callback);
+	};
+
+	_write(buffer, bufferOffset, length, fileOffset, callback) {
+		fs.write(this._fd, buffer, bufferOffset, length, fileOffset, callback);
+	};
+
+	_flush(callback) {
+		fs.fdatasync(this._fd, callback);
+	};
+}
+
+class S3Disk extends Disk {
+	constructor(
+		mapping,
+		bucket,
+		key,
+		accessKey,
+		secretKey,
+		endpoint=null,
+		sslEnabled=true,
+		s3ForcePathStyle=true,
+		signatureVersion='v4'
+	) {
+		super(mapping, true, true);
+		this.bucket = bucket;
+		this.key = key;
+		this.s3 = new aws.S3({
+			accessKeyId: accessKey,
+			secretAccessKey: secretKey,
+			endpoint: endpoint,
+			sslEnabled: sslEnabled,
+			s3ForcePathStyle: s3ForcePathStyle,
+			signatureVersion: signatureVersion
+		});
+		this._ready();
+	};
+
+	_getS3Params() {
+		return { Bucket: this.bucket, Key: this.key };
+	}
+
+	_getCapacity(callback) {
+		this.s3.headObject(this._getS3Params(), function(err, data) {
+			if (err) {
+				callback(err);
+				return;
+			}
+			callback(null, data.ContentLength);
+		});
+	};
+
+	_read(buffer, bufferOffset, length, fileOffset, callback) {
+		const params = this._getS3Params()
+		params.Range = `bytes=${fileOffset}-${fileOffset + length - 1}`;
+		this.s3.getObject(params, function(err, data) {
+			if (err) {
+				callback(err);
+				return;
+			}
+			data.Body.copy(buffer, bufferOffset);
+			callback(null, data.ContentLength, buffer);
+		});
+	};
+}
+
 exports.FileDisk = FileDisk;
+exports.S3Disk = S3Disk;

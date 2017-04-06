@@ -3,16 +3,20 @@ Handles reads / writes on disk image files.
 
 ## API
 
-`new FileDisk(path, mapping, [options])`
+**Warning: The API exposed by this library is still forming and can change at
+any time!**
+
+### FileDisk
+
+`new FileDisk(path, mapping, readOnly, recordWrites)`
 
  - `path` is the path to the disk image
  - `mapping` is an object mapping `read`, `write` and `flush` to numerical
  values. When `FileDisk.request` is called, these values will be used to call
  the right method. Example: `{ read: 0, write: 1, flush: 2 }`
- - `options` is an object like
- `{ readOnly: true / false, recordWrites: true / false }`, both default to
- false. If you use `readOnly` without `recordWrites`, all write requests will
- be lost.
+ - `readOnly` a boolean (default `false`)
+ - `recordWrites`, a boolean (default `false`); if you use `readOnly` without
+ `recordWrites`, all write requests will be lost.
 
 
 `FileDisk.getCapacity(callback)`
@@ -35,6 +39,37 @@ Handles reads / writes on disk image files.
    - `callback(err, bytesWritten)` for write requests;
    - `callback(err)` for flush requests.
 
+### S3Disk
+
+`S3Disk` acts like `FileDisk` except it reads the image file from S3 instead of
+the filesystem. `S3Disk` has `readOnly` and `recordWrites` enabled. This can
+not be changed.
+
+```javascript
+new S3Disk(
+	mapping,
+	bucket,
+	key,
+	accessKey,
+	secretKey,
+	endpoint=null,
+	sslEnabled=true,
+	s3ForcePathStyle=true,
+	signatureVersion='v4'
+);
+```
+
+ - `mapping` same as for `FileDisk`
+ - `bucket` is the S3 bucket to use.
+ - `key` is the key (file name) to use in the bucket.
+ - `accessKey` is the S3 access key.
+ - `secretKey` is the S3 secret key.
+ - `endpoint` [optional] allows to override the S3 URL.
+ - `sslEnabled` (defaults to true).
+ - `s3ForcePathStyle` (defaults to true).
+ - `signatureVersion` (defaults to `'v4'`).
+
+For all parameters except `mapping` see [the aws documentation](http://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html)
 
 ## Examples
 
@@ -95,12 +130,7 @@ const mapping = {
 	flush: FLUSH
 };
 
-options = {
-	readOnly: true,
-	recordWrites: true
-};
-
-const disk = new filedisk.FileDisk('/path/to/some/file', mapping, options)
+const disk = new filedisk.FileDisk('/path/to/some/file', mapping, true, true)
 
 const buf = Buffer.alloc(1024);
 

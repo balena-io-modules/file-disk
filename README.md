@@ -8,36 +8,31 @@ any time!**
 
 ### FileDisk
 
-`new FileDisk(path, mapping, readOnly, recordWrites)`
+`new FileDisk(path, readOnly, recordWrites)`
 
  - `path` is the path to the disk image
- - `mapping` is an object mapping `read`, `write` and `flush` to numerical
- values. When `FileDisk.request` is called, these values will be used to call
- the right method. Example: `{ read: 0, write: 1, flush: 2 }`
  - `readOnly` a boolean (default `false`)
  - `recordWrites`, a boolean (default `false`); if you use `readOnly` without
  `recordWrites`, all write requests will be lost.
 
+`FileDisk.open(callback(err, disk))`
 
-`FileDisk.getCapacity(callback)`
+ - `callback(err, disk)` when the disk is open.
+
+`FileDisk.getCapacity(callback(err, size))`
 
  - `callback(err, size)` will be called with the size of the disk image in
  bytes
 
-
-`FileDisk.request(type, offset, length, buffer, callback)`
- - `type` is a number indicating the type of the request (as defined in the
- `mapping` parameter of `new FileDisk`.
- - `offset` is the offset where the read / write will start in the file.
- - `length` is the number of bytes to read / write from / to the file.
- - `buffer` is a `Buffer`. In case of read requests it is where the read data
- will be stored. In case of write requests it is the buffer containing the data
- to write.
- - `callback` will be called with different parameters depending on the request
- `type`:
-   - `callback(err, bytesRead, buffer)` for read requests;
-   - `callback(err, bytesWritten)` for write requests;
-   - `callback(err)` for flush requests.
+`FileDisk.read(buffer, bufferOffset, length, fileOffset, callback(err, bytesRead, buffer))`
+ - behaves like [fs.read](https://nodejs.org/api/fs.html#fs_fs_read_fd_buffer_offset_length_position_callback)
+`FileDisk.write(buffer, bufferOffset, length, fileOffset, callback(err, bytesWritten))`
+ - behaves like [fs.write](https://nodejs.org/api/fs.html#fs_fs_write_fd_buffer_offset_length_position_callback)
+`FileDisk.flush(callback(err))`
+ - behaves like [fs.fdatasync](https://nodejs.org/api/fs.html#fs_fs_fdatasync_fd_callback)
+`FileDisk.discard(offset, length, callback(err))`
+`FileDisk.close(callback(err))`
+ - behaves like [fs.close](https://nodejs.org/api/fs.html#fs_fs_close_fd_callback)
 
 ### S3Disk
 
@@ -47,7 +42,6 @@ not be changed.
 
 ```javascript
 new S3Disk(
-	mapping,
 	bucket,
 	key,
 	accessKey,
@@ -59,7 +53,6 @@ new S3Disk(
 );
 ```
 
- - `mapping` same as for `FileDisk`
  - `bucket` is the S3 bucket to use.
  - `key` is the key (file name) to use in the bucket.
  - `accessKey` is the S3 access key.
@@ -69,7 +62,8 @@ new S3Disk(
  - `s3ForcePathStyle` (defaults to true).
  - `signatureVersion` (defaults to `'v4'`).
 
-For all parameters except `mapping` see [the aws documentation](http://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html)
+For more information about S3Disk parameters see
+[the aws documentation](http://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html)
 
 ## Examples
 
@@ -80,34 +74,29 @@ For all parameters except `mapping` see [the aws documentation](http://docs.aws.
 const Promise = require('bluebird');
 const filedisk = Promise.promisifyAll(require('resin-file-disk'), { multiArgs: true });
 
-const READ = 0;
-const WRITE = 1;
-const FLUSH = 2;
+const disk = new filedisk.FileDisk('/path/to/some/file')
 
-const mapping = {
-	read: READ,
-	write: WRITE,
-	flush: FLUSH
-};
-
-const disk = new filedisk.FileDisk('/path/to/some/file', mapping)
-
-
-// get file size
-disk.getCapacityAsync()
+disk.openAsync()
+.then(function() {
+	// get file size
+	return disk.getCapacityAsync();
+})
 .spread(function(size) {
 	console.log("size:", size);
 	const buf = Buffer.alloc(1024);
 	// read `buf.length` bytes starting at 0 from the file into `buf`
-	return disk.requestAsync(READ, 0, buf.length, buf);
+	return disk.readAsync(buf, 0, buf.length, 0);
 })
 .spread(function(bytesRead, buf) {
 	// write `buf` into file starting at `buf.length` (in the file)
-	return disk.requestAsync(WRITE, buf.length, buf.length, buf);
+	return disk.writeAsync(buf, 0, buf.length, buf.length);
 })
 .spread(function(bytesWritten) {
 	// flush
-	return disk.requestAsync(FLUSH, null, null, null);
+	return disk.flushAsync();
+})
+.then(function() {
+	return disk.closeAsync();
 });
 
 
@@ -120,34 +109,28 @@ disk.getCapacityAsync()
 const Promise = require('bluebird');
 const filedisk = Promise.promisifyAll(require('resin-file-disk'), { multiArgs: true });
 
-const READ = 0;
-const WRITE = 1;
-const FLUSH = 2;
-
-const mapping = {
-	read: READ,
-	write: WRITE,
-	flush: FLUSH
-};
-
-const disk = new filedisk.FileDisk('/path/to/some/file', mapping, true, true)
+const disk = new filedisk.FileDisk('/path/to/some/file', true, true)
 
 const buf = Buffer.alloc(1024);
 
-// read `buf.length` bytes starting at 0 from the file into `buf`
-disk.requestAsync(READ, 0, buf.length, buf)
+disk.openAsync()
+.then(function() {
+	// read `buf.length` bytes starting at 0 from the file into `buf`
+	return disk.readAsync(buf, 0, buf.length, 0);
+})
 .spread(function(bytesRead, buf) {
 	// write `buf` into file starting at `buf.length` (in the file)
-	return disk.requestAsync(WRITE, buf.length, buf.length, buf);
+	return disk.writeAsync(buf, 0, buf.length, buf.length);
 })
 .spread(function(bytesWritten) {
 	const buf2 = Buffer.alloc(1024);
 	// read what we've just written
-	return disk.requestAsync(READ, buf.length, buf.length, buf2);
+	return disk.readAsync(buf2, 0, buf.length, 0);
 });
 .spread(function(bytesRead, buf2) {
 	// writes are stored in memory
 	assert(buf.equals(buf2));
+	return disk.closeAsync();
 });
 
 ```

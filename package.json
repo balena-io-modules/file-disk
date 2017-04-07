@@ -1,6 +1,6 @@
 {
   "name": "resin-file-disk",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Handles reads / writes on disk image files.",
   "author": "Petros Angelatos <petrosagg@resin.io>",
   "contributors": [

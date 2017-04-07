@@ -1,7 +1,6 @@
 'use strict';
 
 const aws = require('aws-sdk');
-const EventEmitter = require('events');
 const fs = require('fs');
 const iisect = require('interval-intersection');
 
@@ -42,120 +41,98 @@ class DiskWrite {
 	}
 }
 
-class Disk extends EventEmitter {
+class Disk {
 	// Subclasses need to implement:
-	// * constructor() that should call `this._ready()` when the disk is ready;
+	// * _open(callback(err)) [optional]
+	// * _close(callback(err)) [optional]
 	// * _getCapacity(callback)
-	// * _read(buffer, bufferOffset, length, fileOffset, callback)
-	// * _write(buffer, bufferOffset, length, fileOffset, callback)
-	// * _flush(callback)
-	// * _discard(offset, length, buffer, callback)
-	constructor(mapping, readOnly, recordWrites) {
-		super();
-		this._prepareMapping(mapping);
-		this._err = null;
-		this._isReady = false;
+	// * _read(buffer, bufferOffset, length, fileOffset, callback(err, bytesRead, buffer))
+	// * _write(buffer, bufferOffset, length, fileOffset, callback(err, bytesWritten)) [only for writable disks]
+	// * _flush(callback(err)) [only for writable disks]
+	// * _discard(offset, length, callback(err)) [only for writable disks]
+	//
+	// Users of instances of subclasses:
+	// * need to call open(callback(err, disk)) and wait for the callback to be called
+	// * after that they may use:
+	//   * getCapacity(callback(err, size))
+	//   * read(buffer, bufferOffset, length, fileOffset, callback(err, bytesRead, buffer))
+	//   * write(buffer, bufferOffset, length, fileOffset, callback(err, bytesWritten))
+	//   * flush(callback(err))
+	//   * discard(offset, length, callback(err))
+	//   * close(callback(err)) [obviously you can't use the disk after calling close()]
+	constructor(readOnly, recordWrites) {
 		this.readOnly = readOnly;
 		this.recordWrites = recordWrites;
 		this.writes = []  // sorted list of non overlapping DiskWrites
 	};
 
-	_ready() {
-		this._isReady = true;
-		this.emit('ready');
+	_open(callback) {
+		callback(null);
 	}
 
-	_callWhenReady(method, args) {
-		method = method.bind(this);
-		if (!this._isReady) {
-			this.once('ready', function() {
-				if (this._err) {
-					const callback = args[args.length - 1];
-					callback(this._err);
-					return;
-				}
-				method.apply(this, args);
-			});
-			return;
-		}
-		method.apply(this, args);
-	}
-
-	_prepareMapping(mapping) {
-		this.mapping = {}
-		for (let action of [ 'Read', 'Write', 'Flush', 'Discard' ]) {
-			let value = mapping[action.toLowerCase()];
-			if (value !== undefined) {
-				if (Array.isArray(value)) {
-					for (let x of value) {
-						this.mapping[x] = this['_request' + action];
-					}
-				} else {
-					this.mapping[value] = this['_request' + action];
-				}
+	open(callback) {
+		const self = this;
+		this._open(function(err) {
+			if (err) {
+				callback(err);
+				return;
 			}
-		}
+			// Open returns (calls back with) the disk itself
+			callback(null, self);
+		});
 	}
 
-	_requestRead(offset, length, buffer, callback) {
-		// Reads `length` bytes starting at `offset` into `buffer`
+	_close(callback) {
+		callback(null);
+	}
+
+	close(callback) {
+		this._close(callback);
+	}
+
+	read(buffer, bufferOffset, length, fileOffset, callback) {
 		if (this.readOnly && this.recordWrites) {
-			const plan = this._createReadPlan(buffer, offset, length);
+			const plan = this._createReadPlan(buffer, fileOffset, length);
 			this._readAccordingToPlan(buffer, plan, callback);
 		} else {
-			this._read(buffer, 0, length, offset, callback);
+			this._read(buffer, bufferOffset, length, fileOffset, callback);
 		}
-	};
+	}
 
-	_requestWrite(offset, length, buffer, callback) {
-		// Writes the first `length` bytes of `buffer` at `offset`
+	write(buffer, bufferOffset, length, fileOffset, callback) {
 		if (this.recordWrites) {
-			this._insertDiskWrite(new DiskWrite(buffer.slice(0, length), offset));
+			const end = bufferOffset + length;
+			this._insertDiskWrite(buffer.slice(bufferOffset, end), fileOffset);
 		}
 		if (this.readOnly) {
 			callback(null, length, buffer);
 		} else {
-			this._write(buffer, 0, length, offset, callback);
+			this._write(buffer, bufferOffset, length, fileOffset, callback);
 		}
 	};
 
-	_requestFlush(offset, length, buffer, callback) {
-		if (!this.readOnly) {
-			this._flush(callback);
-		} else {
+	flush(callback) {
+		if (this.readOnly) {
 			callback(null);
+		} else {
+			this._flush(callback);
 		}
 	};
 	
-	_requestDiscard(offset, length, buffer, callback) {
+	discard(offset, length, callback) {
 		console.log('UNIMPLEMENTED: discarding', length, 'bytes at offset', offset);
 		callback(null);
 	};
 
-	request(type, offset, length, buffer, callback) {
-		this._callWhenReady(
-			this._request,
-			[type, offset, length, buffer, callback]
-		);
-	}
-
-	_request(type, offset, length, buffer, callback) {
-		const method = this.mapping[type];
-		if (method) {
-			method.bind(this)(offset, length, buffer, callback);
-		} else {
-			callback(new Error("Unknown request type: " + type));
-		}
-	};
-
 	getCapacity(callback) {
-		this._callWhenReady(this._getCapacity, [callback]);
+		this._getCapacity(callback);
 	}
 
-	_insertDiskWrite(w) {
+	_insertDiskWrite(buffer, offset) {
+		const write = new DiskWrite(buffer, offset);
 		if (this.writes.length === 0) {
 			// Special case for empty list: insert and return.
-			this.writes.push(w);
+			this.writes.push(write);
 			return;
 		}
 		let firstFound = false;
@@ -163,20 +140,20 @@ class Disk extends EventEmitter {
 		for (let i = 0; i < this.writes.length; i++) {
 			other = this.writes[i];
 			if (!firstFound) {
-				if (w.intersection(other) !== null) {
+				if (write.intersection(other) !== null) {
 					// First intersection found: merge write and replace it.
-					w.merge(other);
-					this.writes[i] = w;
+					write.merge(other);
+					this.writes[i] = write;
 					firstFound = true;
-				} else if (w.end < other.start) {
+				} else if (write.end < other.start) {
 					// Our write is before the other: insert here and return.
-					this.writes.splice(i, 0, w);
+					this.writes.splice(i, 0, write);
 					return;
 				}
 			} else {
-				if (w.intersection(other) !== null) {
+				if (write.intersection(other) !== null) {
 					// Another intersection found: merge write and remove it
-					w.merge(other);
+					write.merge(other);
 					this.writes.splice(i, 1);
 					i--;
 				} else {
@@ -187,7 +164,7 @@ class Disk extends EventEmitter {
 		}
 		if (!firstFound) {
 			// No intersection and end of loop: our write is the last.
-			this.writes.push(w);
+			this.writes.push(write);
 		}
 	};
 
@@ -250,22 +227,38 @@ class Disk extends EventEmitter {
 }
 
 class FileDisk extends Disk {
-	constructor(path, mapping, readOnly, recordWrites) {
-		super(mapping, readOnly, recordWrites);
+	constructor(path, readOnly, recordWrites) {
+		super(readOnly, recordWrites);
 		this.path = path;
 		this._fd = null;
 
+	};
+
+	_open(callback) {
 		const self = this;
 		const mode = this.readOnly ? 'r' : 'r+';
 		fs.open(this.path, mode, function(err, fd) {
 			if (err) {
-				self._err = err;
-			} else {
-				self._fd = fd;
+				callback(err);
+				return;
 			}
-			self._ready();
+			self._fd = fd;
+			callback(null);
 		});
-	};
+	}
+
+	_close(callback) {
+		const self = this;
+		const mode = this.readOnly ? 'r' : 'r+';
+		fs.close(this._fd, function(err) {
+			if (err) {
+				callback(err);
+				return;
+			}
+			self._fd = null;
+			callback(null);
+		});
+	}
 
 	_getCapacity(callback) {
 		fs.fstat(this._fd, function (err, stat) {
@@ -292,7 +285,6 @@ class FileDisk extends Disk {
 
 class S3Disk extends Disk {
 	constructor(
-		mapping,
 		bucket,
 		key,
 		accessKey,
@@ -302,7 +294,7 @@ class S3Disk extends Disk {
 		s3ForcePathStyle=true,
 		signatureVersion='v4'
 	) {
-		super(mapping, true, true);
+		super(true, true);
 		this.bucket = bucket;
 		this.key = key;
 		this.s3 = new aws.S3({
@@ -313,7 +305,6 @@ class S3Disk extends Disk {
 			s3ForcePathStyle: s3ForcePathStyle,
 			signatureVersion: signatureVersion
 		});
-		this._ready();
 	};
 
 	_getS3Params() {

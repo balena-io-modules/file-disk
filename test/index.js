@@ -10,33 +10,22 @@ const filedisk = Promise.promisifyAll(require('../'), { multiArgs: true });
 const DISK_PATH = path.join(__dirname, 'fixtures', 'zeros');
 const TMP_DISK_PATH = DISK_PATH + '-tmp';
 
-const READ = 0;
-const WRITE = 1;
-const FLUSH = 2;
-const DISCARD = 3;
-const mapping = {
-	read: READ,
-	write: WRITE,
-	flush: FLUSH,
-	discard: DISCARD
-};
-
 function createDisk() {
-	return new filedisk.FileDisk(TMP_DISK_PATH, mapping);
+	const disk = new filedisk.FileDisk(TMP_DISK_PATH);
+	return disk.openAsync();
 }
 
 function createCowDisk() {
-	return new filedisk.FileDisk(
+	const disk = new filedisk.FileDisk(
 		DISK_PATH,
-		mapping,
 		true,  // readOnly
 		true  // recordWrites
 	);
+	return disk.openAsync();
 }
 
 function createS3CowDisk() {
-	return new filedisk.S3Disk(
-		mapping,
+	const disk = new filedisk.S3Disk(
 		'bucket',
 		'zeros',
 		'access_key',
@@ -44,11 +33,15 @@ function createS3CowDisk() {
 		'http://0.0.0.0:9042',
 		false
 	);
+	return disk.openAsync();
 }
 
 function testOnAllDisks(fn) {
 	const disks = [ createDisk(), createCowDisk(), createS3CowDisk() ];
-	return Promise.all(disks.map(fn));
+	return Promise.all(disks)
+	.spread(function(d) {
+		return d.map(fn);
+	});
 }
 
 describe('file-disk', function() {
@@ -63,14 +56,18 @@ describe('file-disk', function() {
 		fs.unlinkSync(TMP_DISK_PATH);
 	});
 
-	it('should errback when the disk file does not exist', function(done) {
-		const disk = new filedisk.FileDisk('no_such_file', mapping);
-		const buf = Buffer.allocUnsafe(1024);
-		disk.request(READ, 0, buf.length, buf, function(err) {
+	it('should errback when the disk file does not exist', function() {
+		const disk = new filedisk.FileDisk('no_such_file');
+		let gotError = false;
+		return disk.openAsync()
+		.catch(function(err) {
+			gotError = true;
 			assert.strictEqual(err.errno, -2);
 			assert.strictEqual(err.code, 'ENOENT');
-			done();
 		})
+		.then(function(what, the, fuck) {
+			assert(gotError);
+		});
 	});
 
 	function testGetCapacity(disk) {
@@ -87,7 +84,7 @@ describe('file-disk', function() {
 	function readRespectsLength(disk) {
 		const buf = Buffer.allocUnsafe(1024);
 		buf.fill(1);
-		return disk.requestAsync(READ, 0, 10, buf)
+		return disk.readAsync(buf, 0, 10, 0)
 		.spread(function(count, buf) {
 			const firstTenBytes = Buffer.allocUnsafe(10);
 			firstTenBytes.fill(0);
@@ -108,9 +105,9 @@ describe('file-disk', function() {
 		const buf = Buffer.allocUnsafe(1024);
 		const buf2 = Buffer.allocUnsafe(1024);
 		buf.fill(1);
-		return disk.requestAsync(WRITE, 0, 10, buf)
+		return disk.writeAsync(buf, 0, 10, 0)
 		.then(function() {
-			return disk.requestAsync(READ, 0, 1024, buf2);
+			return disk.readAsync(buf2, 0, 1024, 0);
 		})
 		.spread(function(count, buf2) {
 			const firstTenBytes = Buffer.allocUnsafe(10);
@@ -131,16 +128,16 @@ describe('file-disk', function() {
 	function shouldReadAndWrite(disk) {
 		const buf = Buffer.allocUnsafe(1024);
 		buf.fill(1);
-		return disk.requestAsync(WRITE, 0, buf.length, buf)
+		return disk.writeAsync(buf, 0, buf.length, 0)
 		.spread(function(count) {
 			assert.strictEqual(count, buf.length);
 			const buf2 = Buffer.allocUnsafe(1024);
-			return disk.requestAsync(READ, 0, buf2.length, buf2);
+			return disk.readAsync(buf2, 0, buf2.length, 0);
 		})
 		.spread(function(count, buf2) {
 			assert.strictEqual(count, buf2.length);
 			assert(buf.equals(buf2));
-			return disk.requestAsync(FLUSH, null, null, null);
+			return disk.flushAsync();
 		})
 	}
 
@@ -151,26 +148,26 @@ describe('file-disk', function() {
 	function overlappingWrites(disk) {
 		const buf = Buffer.allocUnsafe(8);
 		buf.fill(1);
-		return disk.requestAsync(WRITE, 0, buf.length, buf)
+		return disk.writeAsync(buf, 0, buf.length, 0)
 		.then(function() {
 			buf.fill(2);
-			return disk.requestAsync(WRITE, 4, buf.length, buf);
+			return disk.writeAsync(buf, 0, buf.length, 4);
 		})
 		.then(function() {
 			buf.fill(3);
-			return disk.requestAsync(WRITE, 8, buf.length, buf);
+			return disk.writeAsync(buf, 0, buf.length, 8);
 		})
 		.then(function() {
 			buf.fill(4);
-			return disk.requestAsync(WRITE, 24, buf.length, buf);
+			return disk.writeAsync(buf, 0, buf.length, 24);
 		})
 		.then(function() {
 			buf.fill(5);
-			return disk.requestAsync(WRITE, 3, 2, buf);
+			return disk.writeAsync(buf, 0, 2, 3);
 		})
 		.then(function() {
 			const data = Buffer.allocUnsafe(32);
-			return disk.requestAsync(READ, 0, data.length, data);
+			return disk.readAsync(data, 0, data.length, 0);
 		})
 		.spread(function(count, data) {
 			// The final result should be '11155222333333330000000044444444'

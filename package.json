@@ -1,6 +1,6 @@
 {
   "name": "resin-file-disk",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Handles reads / writes on disk image files.",
   "author": "Petros Angelatos <petrosagg@resin.io>",
   "contributors": [
@@ -10,11 +10,12 @@
   "license": "Apache-2.0",
   "main": "index.js",
   "scripts": {
-    "pretest": "./test/start_minio.sh",
+    "pretest": "eslint index.js test/index.js && ./test/start_minio.sh",
     "test": "mocha"
   },
   "devDependencies": {
     "aws-sdk": "2.39.0",
+    "eslint": "^3.19.0",
     "mocha": "2.2.5"
   },
   "dependencies": {

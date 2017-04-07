@@ -31,7 +31,7 @@ class DiskWrite {
 				other.buffer.slice(
 					other.buffer.length - other.end + this.end
 				)
-			)
+			);
 			this.end = other.end;
 		}
 		if (buffers.length > 1) {
@@ -62,8 +62,8 @@ class Disk {
 	constructor(readOnly, recordWrites) {
 		this.readOnly = readOnly;
 		this.recordWrites = recordWrites;
-		this.writes = []  // sorted list of non overlapping DiskWrites
-	};
+		this.writes = [];  // sorted list of non overlapping DiskWrites
+	}
 
 	_open(callback) {
 		callback(null);
@@ -108,7 +108,7 @@ class Disk {
 		} else {
 			this._write(buffer, bufferOffset, length, fileOffset, callback);
 		}
-	};
+	}
 
 	flush(callback) {
 		if (this.readOnly) {
@@ -116,12 +116,12 @@ class Disk {
 		} else {
 			this._flush(callback);
 		}
-	};
+	}
 	
 	discard(offset, length, callback) {
-		console.log('UNIMPLEMENTED: discarding', length, 'bytes at offset', offset);
+		console.log('UNIMPLEMENTED: discarding', length, 'bytes at offset', offset);  // eslint-disable-line no-console
 		callback(null);
-	};
+	}
 
 	getCapacity(callback) {
 		this._getCapacity(callback);
@@ -165,10 +165,10 @@ class Disk {
 			// No intersection and end of loop: our write is the last.
 			this.writes.push(write);
 		}
-	};
+	}
 
 	_createReadPlan(buf, offset, length) {
-		const end = offset + length - 1
+		const end = offset + length - 1;
 		const interval = [offset, end];
 		const intersections = this.writes.filter(function(w) {
 			return (iisect(interval, w.interval()) !== null);
@@ -176,17 +176,17 @@ class Disk {
 		if (intersections.length === 0) {
 			return [ [ offset, end ] ];
 		}
-		const readPlan = []
+		const readPlan = [];
 		let w;
 		for (w of intersections) {
 			if (offset < w.start) {
-				readPlan.push([offset, w.start - 1])
+				readPlan.push([offset, w.start - 1]);
 			}
-			readPlan.push(w)
-			offset = w.end + 1
+			readPlan.push(w);
+			offset = w.end + 1;
 		}
 		if (w && (end > w.end)) {
-			readPlan.push([w.end + 1, end])
+			readPlan.push([w.end + 1, end]);
 		}
 		return readPlan;
 	}
@@ -231,7 +231,7 @@ class FileDisk extends Disk {
 		this.path = path;
 		this._fd = null;
 
-	};
+	}
 
 	_open(callback) {
 		const self = this;
@@ -266,19 +266,19 @@ class FileDisk extends Disk {
 			}
 			callback(null, stat.size);
 		});
-	};
+	}
 
 	_read(buffer, bufferOffset, length, fileOffset, callback) {
 		fs.read(this._fd, buffer, bufferOffset, length, fileOffset, callback);
-	};
+	}
 
 	_write(buffer, bufferOffset, length, fileOffset, callback) {
 		fs.write(this._fd, buffer, bufferOffset, length, fileOffset, callback);
-	};
+	}
 
 	_flush(callback) {
 		fs.fdatasync(this._fd, callback);
-	};
+	}
 }
 
 class S3Disk extends Disk {
@@ -304,7 +304,7 @@ class S3Disk extends Disk {
 	}
 
 	_read(buffer, bufferOffset, length, fileOffset, callback) {
-		const params = this._getS3Params()
+		const params = this._getS3Params();
 		params.Range = `bytes=${fileOffset}-${fileOffset + length - 1}`;
 		this.s3.getObject(params, function(err, data) {
 			if (err) {

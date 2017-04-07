@@ -1,6 +1,8 @@
 # resin-file-disk
 Handles reads / writes on disk image files.
 
+[![Build Status](https://travis-ci.org/resin-io-modules/resin-file-disk.svg?branch=master)](https://travis-ci.org/resin-io-modules/resin-file-disk)
+
 ## API
 
 **Warning: The API exposed by this library is still forming and can change at

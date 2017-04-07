@@ -1,6 +1,9 @@
+/*global it describe beforeEach afterEach*/
+/*eslint no-undef: "error"*/
+
 'use strict';
 
-const Promise = require('bluebird')
+const Promise = require('bluebird');
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
@@ -60,7 +63,7 @@ describe('file-disk', function() {
 			assert.strictEqual(err.errno, -2);
 			assert.strictEqual(err.code, 'ENOENT');
 		})
-		.then(function(what, the, fuck) {
+		.then(function() {
 			assert(gotError);
 		});
 	});
@@ -69,7 +72,7 @@ describe('file-disk', function() {
 		return disk.getCapacityAsync()
 		.spread(function(size) {
 			assert.strictEqual(size, 10240);
-		})
+		});
 	}
 
 	it('getCapacity should return the disk size', function() {
@@ -89,7 +92,7 @@ describe('file-disk', function() {
 			rest.fill(1);
 			// the rest was not updated: ones
 			assert(buf.slice(10).equals(rest));
-		})
+		});
 	}
 
 	it('read should respect the length parameter', function() {
@@ -133,7 +136,7 @@ describe('file-disk', function() {
 			assert.strictEqual(count, buf2.length);
 			assert(buf.equals(buf2));
 			return disk.flushAsync();
-		})
+		});
 	}
 
 	it('should write and read', function() {
@@ -175,7 +178,7 @@ describe('file-disk', function() {
 				4, 4, 4, 4, 4, 4, 4, 4
 			];
 			assert(data.equals(Buffer.from(expected)));
-		})
+		});
 	}
 
 	it('copy on write mode should properly record overlapping writes', function() {

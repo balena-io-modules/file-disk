@@ -335,5 +335,16 @@ class S3Disk extends Disk {
 	};
 }
 
+class DiskWrapper {
+	constructor(disk) {
+		this.disk = disk;
+	}
+
+	getCapacity(callback) {
+		this.disk.getCapacity(callback);
+	}
+}
+
 exports.FileDisk = FileDisk;
 exports.S3Disk = S3Disk;
+exports.DiskWrapper = DiskWrapper;

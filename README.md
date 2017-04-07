@@ -40,27 +40,11 @@ any time!**
 the filesystem. `S3Disk` has `readOnly` and `recordWrites` enabled. This can
 not be changed.
 
-```javascript
-new S3Disk(
-	bucket,
-	key,
-	accessKey,
-	secretKey,
-	endpoint=null,
-	sslEnabled=true,
-	s3ForcePathStyle=true,
-	signatureVersion='v4'
-);
-```
+`new S3Disk(s3, bucket, key)`
 
+ - `s3` is an s3 connection.
  - `bucket` is the S3 bucket to use.
  - `key` is the key (file name) to use in the bucket.
- - `accessKey` is the S3 access key.
- - `secretKey` is the S3 secret key.
- - `endpoint` [optional] allows to override the S3 URL.
- - `sslEnabled` (defaults to true).
- - `s3ForcePathStyle` (defaults to true).
- - `signatureVersion` (defaults to `'v4'`).
 
 For more information about S3Disk parameters see
 [the aws documentation](http://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html)

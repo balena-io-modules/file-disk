@@ -4,11 +4,13 @@ const Promise = require('bluebird')
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
+const aws = require('aws-sdk');
 
 const filedisk = Promise.promisifyAll(require('../'), { multiArgs: true });
 
 const DISK_PATH = path.join(__dirname, 'fixtures', 'zeros');
 const TMP_DISK_PATH = DISK_PATH + '-tmp';
+const S3 = new aws.S3('access_key', 'secret_key', 'http://0.0.0.0:9042', false);
 
 function createDisk() {
 	const disk = new filedisk.FileDisk(TMP_DISK_PATH);
@@ -25,14 +27,7 @@ function createCowDisk() {
 }
 
 function createS3CowDisk() {
-	const disk = new filedisk.S3Disk(
-		'bucket',
-		'zeros',
-		'access_key',
-		'secret_key',
-		'http://0.0.0.0:9042',
-		false
-	);
+	const disk = new filedisk.S3Disk(S3, 'bucket', 'zeros');
 	return disk.openAsync();
 }
 

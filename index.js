@@ -1,6 +1,5 @@
 'use strict';
 
-const aws = require('aws-sdk');
 const fs = require('fs');
 const iisect = require('interval-intersection');
 
@@ -249,7 +248,6 @@ class FileDisk extends Disk {
 
 	_close(callback) {
 		const self = this;
-		const mode = this.readOnly ? 'r' : 'r+';
 		fs.close(this._fd, function(err) {
 			if (err) {
 				callback(err);
@@ -284,28 +282,12 @@ class FileDisk extends Disk {
 }
 
 class S3Disk extends Disk {
-	constructor(
-		bucket,
-		key,
-		accessKey,
-		secretKey,
-		endpoint=null,
-		sslEnabled=true,
-		s3ForcePathStyle=true,
-		signatureVersion='v4'
-	) {
+	constructor(s3, bucket, key) {
 		super(true, true);
+		this.s3 = s3;
 		this.bucket = bucket;
 		this.key = key;
-		this.s3 = new aws.S3({
-			accessKeyId: accessKey,
-			secretAccessKey: secretKey,
-			endpoint: endpoint,
-			sslEnabled: sslEnabled,
-			s3ForcePathStyle: s3ForcePathStyle,
-			signatureVersion: signatureVersion
-		});
-	};
+	}
 
 	_getS3Params() {
 		return { Bucket: this.bucket, Key: this.key };
@@ -319,7 +301,7 @@ class S3Disk extends Disk {
 			}
 			callback(null, data.ContentLength);
 		});
-	};
+	}
 
 	_read(buffer, bufferOffset, length, fileOffset, callback) {
 		const params = this._getS3Params()
@@ -332,7 +314,7 @@ class S3Disk extends Disk {
 			data.Body.copy(buffer, bufferOffset);
 			callback(null, data.ContentLength, buffer);
 		});
-	};
+	}
 }
 
 class DiskWrapper {

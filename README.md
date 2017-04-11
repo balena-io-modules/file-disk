@@ -10,16 +10,12 @@ any time!**
 
 ### FileDisk
 
-`new FileDisk(path, readOnly, recordWrites)`
+`new FileDisk(fd, readOnly, recordWrites)`
 
- - `path` is the path to the disk image
+ - `fd` is a file descriptor returned by `fs.open`
  - `readOnly` a boolean (default `false`)
  - `recordWrites`, a boolean (default `false`); if you use `readOnly` without
  `recordWrites`, all write requests will be lost.
-
-`FileDisk.open(callback(err, disk))`
-
- - `callback(err, disk)` when the disk is open.
 
 `FileDisk.getCapacity(callback(err, size))`
 
@@ -27,14 +23,20 @@ any time!**
  bytes
 
 `FileDisk.read(buffer, bufferOffset, length, fileOffset, callback(err, bytesRead, buffer))`
+
  - behaves like [fs.read](https://nodejs.org/api/fs.html#fs_fs_read_fd_buffer_offset_length_position_callback)
+
 `FileDisk.write(buffer, bufferOffset, length, fileOffset, callback(err, bytesWritten))`
+
  - behaves like [fs.write](https://nodejs.org/api/fs.html#fs_fs_write_fd_buffer_offset_length_position_callback)
+
 `FileDisk.flush(callback(err))`
+
  - behaves like [fs.fdatasync](https://nodejs.org/api/fs.html#fs_fs_fdatasync_fd_callback)
+
 `FileDisk.discard(offset, length, callback(err))`
-`FileDisk.close(callback(err))`
- - behaves like [fs.close](https://nodejs.org/api/fs.html#fs_fs_close_fd_callback)
+
+ - not implemented
 
 ### S3Disk
 
@@ -60,29 +62,25 @@ For more information about S3Disk parameters see
 const Promise = require('bluebird');
 const filedisk = Promise.promisifyAll(require('resin-file-disk'), { multiArgs: true });
 
-const disk = new filedisk.FileDisk('/path/to/some/file')
+Promise.using(filedisk.openFile('/path/to/some/file', 'r+'), function(fd) {
+	const disk = new filedisk.FileDisk(fd)
 
-disk.openAsync()
-.then(function() {
 	// get file size
-	return disk.getCapacityAsync();
-})
-.spread(function(size) {
-	console.log("size:", size);
-	const buf = Buffer.alloc(1024);
-	// read `buf.length` bytes starting at 0 from the file into `buf`
-	return disk.readAsync(buf, 0, buf.length, 0);
-})
-.spread(function(bytesRead, buf) {
-	// write `buf` into file starting at `buf.length` (in the file)
-	return disk.writeAsync(buf, 0, buf.length, buf.length);
-})
-.spread(function(bytesWritten) {
-	// flush
-	return disk.flushAsync();
-})
-.then(function() {
-	return disk.closeAsync();
+	return disk.getCapacityAsync()
+	.spread(function(size) {
+		console.log("size:", size);
+		const buf = Buffer.alloc(1024);
+		// read `buf.length` bytes starting at 0 from the file into `buf`
+		return disk.readAsync(buf, 0, buf.length, 0);
+	})
+	.spread(function(bytesRead, buf) {
+		// write `buf` into file starting at `buf.length` (in the file)
+		return disk.writeAsync(buf, 0, buf.length, buf.length);
+	})
+	.spread(function(bytesWritten) {
+		// flush
+		return disk.flushAsync();
+	});
 });
 
 
@@ -95,28 +93,26 @@ disk.openAsync()
 const Promise = require('bluebird');
 const filedisk = Promise.promisifyAll(require('resin-file-disk'), { multiArgs: true });
 
-const disk = new filedisk.FileDisk('/path/to/some/file', true, true)
-
 const buf = Buffer.alloc(1024);
 
-disk.openAsync()
-.then(function() {
+Promise.using(filedisk.openFile('/path/to/some/file', 'r'), function(fd) {
+	const disk = new filedisk.FileDisk(fd, true, true);
+
 	// read `buf.length` bytes starting at 0 from the file into `buf`
 	return disk.readAsync(buf, 0, buf.length, 0);
-})
-.spread(function(bytesRead, buf) {
-	// write `buf` into file starting at `buf.length` (in the file)
-	return disk.writeAsync(buf, 0, buf.length, buf.length);
-})
-.spread(function(bytesWritten) {
-	const buf2 = Buffer.alloc(1024);
-	// read what we've just written
-	return disk.readAsync(buf2, 0, buf.length, 0);
-});
-.spread(function(bytesRead, buf2) {
-	// writes are stored in memory
-	assert(buf.equals(buf2));
-	return disk.closeAsync();
+	.spread(function(bytesRead, buf) {
+		// write `buf` into file starting at `buf.length` (in the file)
+		return disk.writeAsync(buf, 0, buf.length, buf.length);
+	})
+	.spread(function(bytesWritten) {
+		const buf2 = Buffer.alloc(1024);
+		// read what we've just written
+		return disk.readAsync(buf2, 0, buf.length, 0);
+	});
+	.spread(function(bytesRead, buf2) {
+		// writes are stored in memory
+		assert(buf.equals(buf2));
+	});
 });
 
 ```

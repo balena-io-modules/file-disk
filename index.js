@@ -1,7 +1,21 @@
 'use strict';
 
-const fs = require('fs');
+const Promise = require('bluebird');
+const fs = Promise.promisifyAll(require('fs'));
 const iisect = require('interval-intersection');
+
+function openFile(path, flags, mode) {
+	// Opens a file and closes it when you're done using it.
+	// Arguments are the same that for `fs.open()`
+	// Use it with Bluebird's `using`, example:
+	// Promise.using(openFile('/some/path', 'r+'), function(fd) {
+	//   doSomething(fd);
+	// });
+	return fs.openAsync(path, flags, mode)
+	.disposer(function(fd) {
+		return fs.closeAsync(fd);
+	});
+}
 
 class DiskWrite {
 	constructor(buffer, offset) {
@@ -42,51 +56,22 @@ class DiskWrite {
 
 class Disk {
 	// Subclasses need to implement:
-	// * _open(callback(err)) [optional]
-	// * _close(callback(err)) [optional]
 	// * _getCapacity(callback)
 	// * _read(buffer, bufferOffset, length, fileOffset, callback(err, bytesRead, buffer))
 	// * _write(buffer, bufferOffset, length, fileOffset, callback(err, bytesWritten)) [only for writable disks]
 	// * _flush(callback(err)) [only for writable disks]
 	// * _discard(offset, length, callback(err)) [only for writable disks]
 	//
-	// Users of instances of subclasses:
-	// * need to call open(callback(err, disk)) and wait for the callback to be called
-	// * after that they may use:
-	//   * getCapacity(callback(err, size))
-	//   * read(buffer, bufferOffset, length, fileOffset, callback(err, bytesRead, buffer))
-	//   * write(buffer, bufferOffset, length, fileOffset, callback(err, bytesWritten))
-	//   * flush(callback(err))
-	//   * discard(offset, length, callback(err))
-	//   * close(callback(err)) [obviously you can't use the disk after calling close()]
+	// Users of instances of subclasses can use:
+	// * getCapacity(callback(err, size))
+	// * read(buffer, bufferOffset, length, fileOffset, callback(err, bytesRead, buffer))
+	// * write(buffer, bufferOffset, length, fileOffset, callback(err, bytesWritten))
+	// * flush(callback(err))
+	// * discard(offset, length, callback(err))
 	constructor(readOnly, recordWrites) {
 		this.readOnly = readOnly;
 		this.recordWrites = recordWrites;
 		this.writes = [];  // sorted list of non overlapping DiskWrites
-	}
-
-	_open(callback) {
-		callback(null);
-	}
-
-	open(callback) {
-		const self = this;
-		this._open(function(err) {
-			if (err) {
-				callback(err);
-				return;
-			}
-			// Open returns (calls back with) the disk itself
-			callback(null, self);
-		});
-	}
-
-	_close(callback) {
-		callback(null);
-	}
-
-	close(callback) {
-		this._close(callback);
 	}
 
 	read(buffer, bufferOffset, length, fileOffset, callback) {
@@ -226,40 +211,14 @@ class Disk {
 }
 
 class FileDisk extends Disk {
-	constructor(path, readOnly, recordWrites) {
+	constructor(fd, readOnly, recordWrites) {
 		super(readOnly, recordWrites);
-		this.path = path;
-		this._fd = null;
+		this.fd = fd;
 
-	}
-
-	_open(callback) {
-		const self = this;
-		const mode = this.readOnly ? 'r' : 'r+';
-		fs.open(this.path, mode, function(err, fd) {
-			if (err) {
-				callback(err);
-				return;
-			}
-			self._fd = fd;
-			callback(null);
-		});
-	}
-
-	_close(callback) {
-		const self = this;
-		fs.close(this._fd, function(err) {
-			if (err) {
-				callback(err);
-				return;
-			}
-			self._fd = null;
-			callback(null);
-		});
 	}
 
 	_getCapacity(callback) {
-		fs.fstat(this._fd, function (err, stat) {
+		fs.fstat(this.fd, function (err, stat) {
 			if (err) {
 				callback(err);
 				return;
@@ -269,15 +228,15 @@ class FileDisk extends Disk {
 	}
 
 	_read(buffer, bufferOffset, length, fileOffset, callback) {
-		fs.read(this._fd, buffer, bufferOffset, length, fileOffset, callback);
+		fs.read(this.fd, buffer, bufferOffset, length, fileOffset, callback);
 	}
 
 	_write(buffer, bufferOffset, length, fileOffset, callback) {
-		fs.write(this._fd, buffer, bufferOffset, length, fileOffset, callback);
+		fs.write(this.fd, buffer, bufferOffset, length, fileOffset, callback);
 	}
 
 	_flush(callback) {
-		fs.fdatasync(this._fd, callback);
+		fs.fdatasync(this.fd, callback);
 	}
 }
 
@@ -327,6 +286,7 @@ class DiskWrapper {
 	}
 }
 
+exports.openFile = openFile;
 exports.FileDisk = FileDisk;
 exports.S3Disk = S3Disk;
 exports.DiskWrapper = DiskWrapper;

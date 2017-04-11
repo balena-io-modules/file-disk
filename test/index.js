@@ -13,32 +13,30 @@ const filedisk = Promise.promisifyAll(require('../'), { multiArgs: true });
 
 const DISK_PATH = path.join(__dirname, 'fixtures', 'zeros');
 const TMP_DISK_PATH = DISK_PATH + '-tmp';
-const S3 = new aws.S3('access_key', 'secret_key', 'http://0.0.0.0:9042', false);
+const S3 = new aws.S3({
+	accessKeyId: 'access_key',
+	secretAccessKey: 'secret_key',
+	endpoint: 'http://0.0.0.0:9042',
+	s3ForcePathStyle: true,
+	sslEnabled: false
+});
 
-function createDisk() {
-	const disk = new filedisk.FileDisk(TMP_DISK_PATH);
-	return disk.openAsync();
+function createDisk(fd) {
+	return new filedisk.FileDisk(fd);
 }
 
-function createCowDisk() {
-	const disk = new filedisk.FileDisk(
-		DISK_PATH,
-		true,  // readOnly
-		true  // recordWrites
-	);
-	return disk.openAsync();
+function createCowDisk(fd) {
+	return new filedisk.FileDisk(fd, true, true);
 }
 
 function createS3CowDisk() {
-	const disk = new filedisk.S3Disk(S3, 'bucket', 'zeros');
-	return disk.openAsync();
+	return new filedisk.S3Disk(S3, 'bucket', 'zeros');
 }
 
 function testOnAllDisks(fn) {
-	const disks = [ createDisk(), createCowDisk(), createS3CowDisk() ];
-	return Promise.all(disks)
-	.spread(function(d) {
-		return d.map(fn);
+	return Promise.using(filedisk.openFile(DISK_PATH, 'r'), filedisk.openFile(TMP_DISK_PATH, 'r+'), function(roFd, rwFd) {
+		const disks = [ createCowDisk(roFd), createDisk(rwFd), createS3CowDisk() ];
+		return Promise.all(disks.map(fn));
 	});
 }
 
@@ -52,20 +50,6 @@ describe('file-disk', function() {
 
 	afterEach(function() {
 		fs.unlinkSync(TMP_DISK_PATH);
-	});
-
-	it('should errback when the disk file does not exist', function() {
-		const disk = new filedisk.FileDisk('no_such_file');
-		let gotError = false;
-		return disk.openAsync()
-		.catch(function(err) {
-			gotError = true;
-			assert.strictEqual(err.errno, -2);
-			assert.strictEqual(err.code, 'ENOENT');
-		})
-		.then(function() {
-			assert(gotError);
-		});
 	});
 
 	function testGetCapacity(disk) {

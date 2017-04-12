@@ -38,6 +38,13 @@ any time!**
 
  - not implemented
 
+`FileDisk.getStream(highWaterMark, callback(err, stream))`
+
+ - `highWaterMark` [optional, defaults to 16384, minimum 16] is the size of
+ chunks that will be read
+ - `callback(err, stream)` will be called with a readable stream of the disk
+ content
+
 ### S3Disk
 
 `S3Disk` acts like `FileDisk` except it reads the image file from S3 instead of
@@ -86,7 +93,7 @@ Promise.using(filedisk.openFile('/path/to/some/file', 'r+'), function(fd) {
 
 ```
 
-### Open a file readOnly and use the recordWrites mode.
+### Open a file readOnly, use the recordWrites mode, then stream the contents somewhere.
 
 ```javascript
 
@@ -112,6 +119,17 @@ Promise.using(filedisk.openFile('/path/to/some/file', 'r'), function(fd) {
 	.spread(function(bytesRead, buf2) {
 		// writes are stored in memory
 		assert(buf.equals(buf2));
+	})
+	.then(function() {
+		return disk.getStreamAsync();
+	})
+	.spread(function(stream) {
+		// pipe the stream somewhere
+		return new Promise(function(resolve, reject) {
+			stream.pipe(someWritableStream)
+			.on('close', resolve)
+			.on('error', reject);
+		});
 	});
 });
 

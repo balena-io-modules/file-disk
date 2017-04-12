@@ -8,11 +8,13 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 const aws = require('aws-sdk');
+const streamToArrayAsync = Promise.promisifyAll(require('stream-to-array'));
 
 const filedisk = Promise.promisifyAll(require('../'), { multiArgs: true });
 
 const DISK_PATH = path.join(__dirname, 'fixtures', 'zeros');
 const TMP_DISK_PATH = DISK_PATH + '-tmp';
+const DISK_SIZE = 10240;
 const S3 = new aws.S3({
 	accessKeyId: 'access_key',
 	secretAccessKey: 'secret_key',
@@ -55,7 +57,7 @@ describe('file-disk', function() {
 	function testGetCapacity(disk) {
 		return disk.getCapacityAsync()
 		.spread(function(size) {
-			assert.strictEqual(size, 10240);
+			assert.strictEqual(size, DISK_SIZE);
 		});
 	}
 
@@ -128,6 +130,17 @@ describe('file-disk', function() {
 	});
 
 	function overlappingWrites(disk) {
+		// The final result should be '11155222333333330000000044444444'
+		const expected = Buffer.from([
+			1, 1, 1,
+			5, 5,
+			2, 2, 2,
+			3, 3, 3, 3, 3, 3, 3, 3,
+			0, 0, 0, 0, 0, 0, 0, 0,
+			4, 4, 4, 4, 4, 4, 4, 4
+		]);
+		const expectedFull = Buffer.alloc(DISK_SIZE);
+		expected.copy(expectedFull);
 		const buf = Buffer.allocUnsafe(8);
 		buf.fill(1);
 		return disk.writeAsync(buf, 0, buf.length, 0)
@@ -152,16 +165,17 @@ describe('file-disk', function() {
 			return disk.readAsync(data, 0, data.length, 0);
 		})
 		.spread(function(count, data) {
-			// The final result should be '11155222333333330000000044444444'
-			const expected = [
-				1, 1, 1,
-				5, 5,
-				2, 2, 2,
-				3, 3, 3, 3, 3, 3, 3, 3,
-				0, 0, 0, 0, 0, 0, 0, 0,
-				4, 4, 4, 4, 4, 4, 4, 4
-			];
-			assert(data.equals(Buffer.from(expected)));
+			assert(data.equals(expected));
+		})
+		// Test disk readable stream:
+		.then(function() {
+			return disk.getStreamAsync();
+		})
+		.spread(function(stream) {
+			return streamToArrayAsync(stream);
+		})
+		.then(function(arr) {
+			assert(Buffer.concat(arr).equals(expectedFull));
 		});
 	}
 

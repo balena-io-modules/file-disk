@@ -1,8 +1,48 @@
 'use strict';
 
 const Promise = require('bluebird');
+const Readable = require('stream').Readable;
 const fs = Promise.promisifyAll(require('fs'));
 const iisect = require('interval-intersection');
+
+const MIN_HIGH_WATER_MARK = 16;
+const DEFAULT_HIGH_WATER_MARK = 16384;
+
+class DiskStream extends Readable {
+	constructor(disk, capacity, highWaterMark) {
+		super({highWaterMark: Math.max(highWaterMark, MIN_HIGH_WATER_MARK)});
+		this.disk = disk;
+		this.capacity = capacity;
+		this.position = 0;
+	}
+
+	_read() {
+		const self = this;
+		const length = Math.min(
+			self._readableState.highWaterMark,
+			self.capacity - self.position
+		);
+		if (length <= 0) {
+			self.push(null);
+			return;
+		}
+		const buffer = Buffer.allocUnsafe(self._readableState.highWaterMark);
+		self.disk.read(
+			buffer,
+			0,  // buffer offset
+			length,
+			self.position,  // disk offset
+			function(err, bytesRead, buf) {
+				if (err) {
+					self.emit('error', err);
+					return;
+				}
+				self.position += length;
+				self.push(buf.slice(0, length));
+			}
+		);
+	}
+}
 
 function openFile(path, flags, mode) {
 	// Opens a file and closes it when you're done using it.
@@ -68,6 +108,9 @@ class Disk {
 	// * write(buffer, bufferOffset, length, fileOffset, callback(err, bytesWritten))
 	// * flush(callback(err))
 	// * discard(offset, length, callback(err))
+	// * getStream(highWaterMark, callback(err, stream))
+	//   * highWaterMark [optional] is the size of chunks that will be read (default 16384, minimum 16)
+	//   * `stream` will be a readable stream of the disk
 	constructor(readOnly, recordWrites) {
 		this.readOnly = readOnly;
 		this.recordWrites = recordWrites;
@@ -110,6 +153,21 @@ class Disk {
 
 	getCapacity(callback) {
 		this._getCapacity(callback);
+	}
+
+	getStream(highWaterMark, callback) {
+		if ((typeof highWaterMark === 'function') && (callback === undefined)) {
+			callback = highWaterMark;
+			highWaterMark = DEFAULT_HIGH_WATER_MARK;
+		}
+		const self = this;
+		self.getCapacity(function(err, capacity) {
+			if (err) {
+				callback(err);
+				return;
+			}
+			callback(null, new DiskStream(self, capacity, highWaterMark));
+		});
 	}
 
 	_insertDiskWrite(buffer, offset) {
@@ -284,8 +342,13 @@ class DiskWrapper {
 	getCapacity(callback) {
 		this.disk.getCapacity(callback);
 	}
+
+	getStream(highWaterMark, callback) {
+		this.disk.getStream(highWaterMark, callback);
+	}
 }
 
+exports.DiskStream = DiskStream;
 exports.openFile = openFile;
 exports.FileDisk = FileDisk;
 exports.S3Disk = S3Disk;

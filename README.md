@@ -1,7 +1,7 @@
-# resin-file-disk
+# file-disk
 Handles reads / writes on disk image files.
 
-[![Build Status](https://travis-ci.org/resin-io-modules/resin-file-disk.svg?branch=master)](https://travis-ci.org/resin-io-modules/resin-file-disk)
+[![Build Status](https://travis-ci.org/resin-io-modules/file-disk.svg?branch=master)](https://travis-ci.org/resin-io-modules/file-disk)
 
 ## API
 
@@ -67,7 +67,7 @@ For more information about S3Disk parameters see
 ```javascript
 
 const Promise = require('bluebird');
-const filedisk = Promise.promisifyAll(require('resin-file-disk'), { multiArgs: true });
+const filedisk = Promise.promisifyAll(require('file-disk'), { multiArgs: true });
 
 Promise.using(filedisk.openFile('/path/to/some/file', 'r+'), function(fd) {
 	const disk = new filedisk.FileDisk(fd)
@@ -98,7 +98,7 @@ Promise.using(filedisk.openFile('/path/to/some/file', 'r+'), function(fd) {
 ```javascript
 
 const Promise = require('bluebird');
-const filedisk = Promise.promisifyAll(require('resin-file-disk'), { multiArgs: true });
+const filedisk = Promise.promisifyAll(require('file-disk'), { multiArgs: true });
 
 const buf = Buffer.alloc(1024);
 

@@ -9,7 +9,7 @@ then
 fi
 
 docker run -d \
-	--name resin-file-disk-minio \
+	--name file-disk-minio \
 	-p 9042:9000 \
 	-e "MINIO_ACCESS_KEY=access_key" \
 	-e "MINIO_SECRET_KEY=secret_key" \

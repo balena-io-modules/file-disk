@@ -350,6 +350,7 @@ class DiskWrapper {
 
 exports.DiskStream = DiskStream;
 exports.openFile = openFile;
+exports.Disk = Disk;
 exports.FileDisk = FileDisk;
 exports.S3Disk = S3Disk;
 exports.DiskWrapper = DiskWrapper;

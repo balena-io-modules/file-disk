@@ -1,6 +1,6 @@
 {
   "name": "file-disk",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "description": "Handles reads / writes on disk image files.",
   "author": "Petros Angelatos <petrosagg@resin.io>",
   "contributors": [

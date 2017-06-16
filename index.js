@@ -57,7 +57,7 @@ function openFile(path, flags, mode) {
 	});
 }
 
-class DiskWrite {
+class DiskChunk {
 	constructor(buffer, offset) {
 		this.buffer = Buffer.from(buffer);
 		this.start = offset;
@@ -73,7 +73,7 @@ class DiskWrite {
 	}
 
 	merge(other) {
-		// `other` must be an overlapping `DiskWrite`
+		// `other` must be an overlapping `DiskChunk`
 		const buffers = [];
 		if (other.start < this.start) {
 			buffers.push(other.buffer.slice(0, this.start - other.start));
@@ -111,25 +111,22 @@ class Disk {
 	// * getStream(highWaterMark, callback(err, stream))
 	//   * highWaterMark [optional] is the size of chunks that will be read (default 16384, minimum 16)
 	//   * `stream` will be a readable stream of the disk
-	constructor(readOnly, recordWrites) {
+	constructor(readOnly, recordWrites, recordReads) {
 		this.readOnly = readOnly;
 		this.recordWrites = recordWrites;
-		this.writes = [];  // sorted list of non overlapping DiskWrites
+		this.recordReads = recordReads;
+		this.knownChunks = [];  // sorted list of non overlapping DiskChunks
 	}
 
 	read(buffer, bufferOffset, length, fileOffset, callback) {
-		if (this.readOnly && this.recordWrites) {
-			const plan = this._createReadPlan(buffer, fileOffset, length);
-			this._readAccordingToPlan(buffer, plan, callback);
-		} else {
-			this._read(buffer, bufferOffset, length, fileOffset, callback);
-		}
+		const plan = this._createReadPlan(buffer, fileOffset, length);
+		this._readAccordingToPlan(buffer, plan, callback);
 	}
 
 	write(buffer, bufferOffset, length, fileOffset, callback) {
 		if (this.recordWrites) {
 			const end = bufferOffset + length;
-			this._insertDiskWrite(buffer.slice(bufferOffset, end), fileOffset);
+			this._insertDiskChunk(buffer.slice(bufferOffset, end), fileOffset);
 		}
 		if (this.readOnly) {
 			callback(null, length, buffer);
@@ -170,33 +167,33 @@ class Disk {
 		});
 	}
 
-	_insertDiskWrite(buffer, offset) {
-		const write = new DiskWrite(buffer, offset);
-		if (this.writes.length === 0) {
+	_insertDiskChunk(buffer, offset) {
+		const write = new DiskChunk(buffer, offset);
+		if (this.knownChunks.length === 0) {
 			// Special case for empty list: insert and return.
-			this.writes.push(write);
+			this.knownChunks.push(write);
 			return;
 		}
 		let firstFound = false;
 		let other;
-		for (let i = 0; i < this.writes.length; i++) {
-			other = this.writes[i];
+		for (let i = 0; i < this.knownChunks.length; i++) {
+			other = this.knownChunks[i];
 			if (!firstFound) {
 				if (write.intersection(other) !== null) {
 					// First intersection found: merge write and replace it.
 					write.merge(other);
-					this.writes[i] = write;
+					this.knownChunks[i] = write;
 					firstFound = true;
 				} else if (write.end < other.start) {
 					// Our write is before the other: insert here and return.
-					this.writes.splice(i, 0, write);
+					this.knownChunks.splice(i, 0, write);
 					return;
 				}
 			} else {
 				if (write.intersection(other) !== null) {
 					// Another intersection found: merge write and remove it
 					write.merge(other);
-					this.writes.splice(i, 1);
+					this.knownChunks.splice(i, 1);
 					i--;
 				} else {
 					// No intersection found, we're done.
@@ -206,14 +203,14 @@ class Disk {
 		}
 		if (!firstFound) {
 			// No intersection and end of loop: our write is the last.
-			this.writes.push(write);
+			this.knownChunks.push(write);
 		}
 	}
 
 	_createReadPlan(buf, offset, length) {
 		const end = offset + length - 1;
 		const interval = [offset, end];
-		const intersections = this.writes.filter(function(w) {
+		const intersections = this.knownChunks.filter(function(w) {
 			return (iisect(interval, w.interval()) !== null);
 		});
 		if (intersections.length === 0) {
@@ -235,6 +232,7 @@ class Disk {
 	}
 
 	_readAccordingToPlan(buffer, plan, callback) {
+		const self = this;
 		let chunksLeft = plan.length;
 		let offset = 0;
 		let failed = false;
@@ -244,7 +242,7 @@ class Disk {
 			}
 		}
 		for (let entry of plan) {
-			if (entry instanceof DiskWrite) {
+			if (entry instanceof DiskChunk) {
 				entry.buffer.copy(buffer, offset);
 				offset += entry.buffer.length;
 				chunksLeft--;
@@ -257,6 +255,13 @@ class Disk {
 							failed = true;
 						}
 					} else {
+						if (self.recordReads) {
+							console.log("saving", entry)
+							self._insertDiskChunk(
+								buffer.slice(entry[0], entry[1] + 1),
+								entry[0]
+							);
+						}
 						chunksLeft--;
 						done();
 					}
@@ -269,10 +274,9 @@ class Disk {
 }
 
 class FileDisk extends Disk {
-	constructor(fd, readOnly, recordWrites) {
-		super(readOnly, recordWrites);
+	constructor(fd, readOnly, recordWrites, recordReads) {
+		super(readOnly, recordWrites, recordReads);
 		this.fd = fd;
-
 	}
 
 	_getCapacity(callback) {
@@ -299,8 +303,8 @@ class FileDisk extends Disk {
 }
 
 class S3Disk extends Disk {
-	constructor(s3, bucket, key) {
-		super(true, true);
+	constructor(s3, bucket, key, recordReads) {
+		super(true, true, recordReads);
 		this.s3 = s3;
 		this.bucket = bucket;
 		this.key = key;

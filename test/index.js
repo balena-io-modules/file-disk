@@ -28,11 +28,11 @@ function createDisk(fd) {
 }
 
 function createCowDisk(fd) {
-	return new filedisk.FileDisk(fd, true, true);
+	return new filedisk.FileDisk(fd, true, true, true);
 }
 
 function createS3CowDisk() {
-	return new filedisk.S3Disk(S3, 'bucket', 'zeros');
+	return new filedisk.S3Disk(S3, 'bucket', 'zeros', true);
 }
 
 function testOnAllDisks(fn) {

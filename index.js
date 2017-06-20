@@ -82,15 +82,11 @@ class DiskChunk {
 		buffers.push(this.buffer);
 		if (other.end > this.end) {
 			buffers.push(
-				other.buffer.slice(
-					other.buffer.length - other.end + this.end
-				)
+				other.buffer.slice(other.buffer.length - other.end + this.end)
 			);
 			this.end = other.end;
 		}
-		if (buffers.length > 1) {
-			this.buffer = Buffer.concat(buffers, this.end - this.start + 1);
-		}
+		this.buffer = Buffer.concat(buffers, this.end - this.start + 1);
 	}
 }
 
@@ -168,10 +164,10 @@ class Disk {
 	}
 
 	_insertDiskChunk(buffer, offset) {
-		const write = new DiskChunk(buffer, offset);
+		const chunk = new DiskChunk(buffer, offset);
 		if (this.knownChunks.length === 0) {
 			// Special case for empty list: insert and return.
-			this.knownChunks.push(write);
+			this.knownChunks.push(chunk);
 			return;
 		}
 		let firstFound = false;
@@ -179,20 +175,20 @@ class Disk {
 		for (let i = 0; i < this.knownChunks.length; i++) {
 			other = this.knownChunks[i];
 			if (!firstFound) {
-				if (write.intersection(other) !== null) {
-					// First intersection found: merge write and replace it.
-					write.merge(other);
-					this.knownChunks[i] = write;
+				if (chunk.intersection(other) !== null) {
+					// First intersection found: merge chunk and replace it.
+					chunk.merge(other);
+					this.knownChunks[i] = chunk;
 					firstFound = true;
-				} else if (write.end < other.start) {
-					// Our write is before the other: insert here and return.
-					this.knownChunks.splice(i, 0, write);
+				} else if (chunk.end < other.start) {
+					// Our chunk is before the other: insert here and return.
+					this.knownChunks.splice(i, 0, chunk);
 					return;
 				}
 			} else {
-				if (write.intersection(other) !== null) {
-					// Another intersection found: merge write and remove it
-					write.merge(other);
+				if (chunk.intersection(other) !== null) {
+					// Another intersection found: merge chunk and remove it
+					chunk.merge(other);
 					this.knownChunks.splice(i, 1);
 					i--;
 				} else {
@@ -202,8 +198,8 @@ class Disk {
 			}
 		}
 		if (!firstFound) {
-			// No intersection and end of loop: our write is the last.
-			this.knownChunks.push(write);
+			// No intersection and end of loop: our chunk is the last.
+			this.knownChunks.push(chunk);
 		}
 	}
 
@@ -256,7 +252,6 @@ class Disk {
 						}
 					} else {
 						if (self.recordReads) {
-							console.log("saving", entry)
 							self._insertDiskChunk(
 								buffer.slice(entry[0], entry[1] + 1),
 								entry[0]

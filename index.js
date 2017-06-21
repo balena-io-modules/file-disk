@@ -58,10 +58,18 @@ function openFile(path, flags, mode) {
 }
 
 class DiskChunk {
-	constructor(buffer, offset) {
-		this.buffer = Buffer.from(buffer);
-		this.start = offset;
-		this.end = offset + buffer.length - 1;
+	constructor(buffer, offset, copy=true) {
+		if (copy) {
+			this.buffer = Buffer.from(buffer);
+		} else {
+			this.buffer = buffer;
+		}
+		this.start = offset;  // position in file
+		this.end = offset + buffer.length - 1;  // position of the last byte
+	}
+
+	data() {
+		return this.buffer;
 	}
 
 	interval() {
@@ -72,21 +80,35 @@ class DiskChunk {
 		return iisect(this.interval(), other.interval());
 	}
 
-	merge(other) {
+	intersects(other) {
+		return (this.intersection(other) !== null);
+	}
+
+	includedIn(other) {
+		return ((this.start >= other.start) && (this.end <= other.end));
+	}
+
+	cut(other) {
 		// `other` must be an overlapping `DiskChunk`
-		const buffers = [];
-		if (other.start < this.start) {
-			buffers.push(other.buffer.slice(0, this.start - other.start));
-			this.start = other.start;
+		const result = [];
+		const intersection = this.intersection(other);
+		if (intersection[0] > this.start) {
+			result.push(this.slice(this.start, intersection[0] - 1));
 		}
-		buffers.push(this.buffer);
-		if (other.end > this.end) {
-			buffers.push(
-				other.buffer.slice(other.buffer.length - other.end + this.end)
-			);
-			this.end = other.end;
+		if (this.end > intersection[1]) {
+			result.push(this.slice(intersection[1] + 1, this.end));
 		}
-		this.buffer = Buffer.concat(buffers, this.end - this.start + 1);
+		return result;
+	}
+
+	slice(start, end) {
+		// start and end are relative to the Disk
+		const startInBuffer = start - this.start;
+		return new DiskChunk(
+			this.buffer.slice(startInBuffer, startInBuffer + end - start + 1),
+			start,
+			false
+		);
 	}
 }
 
@@ -165,42 +187,32 @@ class Disk {
 
 	_insertDiskChunk(buffer, offset) {
 		const chunk = new DiskChunk(buffer, offset);
-		if (this.knownChunks.length === 0) {
-			// Special case for empty list: insert and return.
-			this.knownChunks.push(chunk);
-			return;
-		}
-		let firstFound = false;
-		let other;
-		for (let i = 0; i < this.knownChunks.length; i++) {
+		let other, i;
+		let insertAt = 0;
+		for (i = 0; i < this.knownChunks.length; i++) {
 			other = this.knownChunks[i];
-			if (!firstFound) {
-				if (chunk.intersection(other) !== null) {
-					// First intersection found: merge chunk and replace it.
-					chunk.merge(other);
-					this.knownChunks[i] = chunk;
-					firstFound = true;
-				} else if (chunk.end < other.start) {
-					// Our chunk is before the other: insert here and return.
-					this.knownChunks.splice(i, 0, chunk);
-					return;
-				}
+			if (other.start > chunk.end) {
+				break;
+			}
+			if (other.start < chunk.start) {
+				insertAt = i + 1;
 			} else {
-				if (chunk.intersection(other) !== null) {
-					// Another intersection found: merge chunk and remove it
-					chunk.merge(other);
-					this.knownChunks.splice(i, 1);
-					i--;
-				} else {
-					// No intersection found, we're done.
-					return;
-				}
+				insertAt = i;
+			}
+			if (!chunk.intersects(other)) {
+				continue;
+			} else if (other.includedIn(chunk)) {
+				// Delete other
+				this.knownChunks.splice(i, 1);
+				i--;
+			} else {
+				// Cut other
+				const newChunks = other.cut(chunk);
+				this.knownChunks.splice(i, 1, ...newChunks);
+				i += newChunks.length - 1;
 			}
 		}
-		if (!firstFound) {
-			// No intersection and end of loop: our chunk is the last.
-			this.knownChunks.push(chunk);
-		}
+		this.knownChunks.splice(insertAt, 0, chunk);
 	}
 
 	_createReadPlan(buf, offset, length) {
@@ -239,8 +251,8 @@ class Disk {
 		}
 		for (let entry of plan) {
 			if (entry instanceof DiskChunk) {
-				entry.buffer.copy(buffer, offset);
-				offset += entry.buffer.length;
+				entry.data().copy(buffer, offset);
+				offset += entry.data().length;
 				chunksLeft--;
 			} else {
 				const length = entry[1] - entry[0] + 1;
@@ -348,6 +360,7 @@ class DiskWrapper {
 }
 
 exports.DiskStream = DiskStream;
+exports.DiskChunk = DiskChunk;  // only exported for tests, TODO: move to a separate file
 exports.openFile = openFile;
 exports.Disk = Disk;
 exports.FileDisk = FileDisk;

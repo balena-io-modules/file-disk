@@ -36,11 +36,39 @@ function createS3CowDisk() {
 }
 
 function testOnAllDisks(fn) {
-	return Promise.using(filedisk.openFile(DISK_PATH, 'r'), filedisk.openFile(TMP_DISK_PATH, 'r+'), function(roFd, rwFd) {
-		const disks = [ createCowDisk(roFd), createDisk(rwFd), createS3CowDisk() ];
+	const files = [
+		filedisk.openFile(DISK_PATH, 'r'),
+		filedisk.openFile(TMP_DISK_PATH, 'r+')
+	];
+	return Promise.using(files, function(fds) {
+		const disks = [
+			createCowDisk(fds[0]),
+			createDisk(fds[1]),
+			createS3CowDisk()
+		];
 		return Promise.all(disks.map(fn));
 	});
 }
+
+describe('DiskChunk', function() {
+	describe('slice', function() {
+		it('0-3, slice 0-2', function() {
+			const chunk = new filedisk.DiskChunk(Buffer.alloc(4), 0);
+			const slice = chunk.slice(0, 2);
+			assert.strictEqual(slice.start, 0);
+			assert.strictEqual(slice.end, 2);
+			assert.strictEqual(slice.buffer.length, 3);
+		});
+
+		it('4-7, slice 5-6', function() {
+			const chunk = new filedisk.DiskChunk(Buffer.alloc(4), 4);
+			const slice = chunk.slice(5, 6);
+			assert.strictEqual(slice.start, 5);
+			assert.strictEqual(slice.end, 6);
+			assert.strictEqual(slice.buffer.length, 2);
+		});
+	});
+});
 
 describe('file-disk', function() {
 	beforeEach(function(done) {
@@ -129,44 +157,50 @@ describe('file-disk', function() {
 		return testOnAllDisks(shouldReadAndWrite);
 	});
 
+	function createBuffer(size, pattern) {
+		// Helper for checking disk contents.
+		const buffer = Buffer.alloc(size);
+		Buffer.from(Array.from(pattern).map(Number)).copy(buffer);
+		return buffer;
+	}
+
+	function checkDiskContains(disk, pattern) {
+		// Helper for checking disk contents.
+		return function() {
+			const size = 32;
+			const expected = createBuffer(size, pattern);
+			return disk.readAsync(Buffer.allocUnsafe(size), 0, size, 0)
+			.spread(function(count, real) {
+				assert(real.equals(expected));
+			});
+		};
+	}
+
 	function overlappingWrites(disk) {
-		// The final result should be '11155222333333330000000044444444'
-		const expected = Buffer.from([
-			1, 1, 1,
-			5, 5,
-			2, 2, 2,
-			3, 3, 3, 3, 3, 3, 3, 3,
-			0, 0, 0, 0, 0, 0, 0, 0,
-			4, 4, 4, 4, 4, 4, 4, 4
-		]);
-		const expectedFull = Buffer.alloc(DISK_SIZE);
-		expected.copy(expectedFull);
 		const buf = Buffer.allocUnsafe(8);
 		buf.fill(1);
 		return disk.writeAsync(buf, 0, buf.length, 0)
+		.then(checkDiskContains(disk, '11111111'))
 		.then(function() {
 			buf.fill(2);
 			return disk.writeAsync(buf, 0, buf.length, 4);
 		})
+		.then(checkDiskContains(disk, '111122222222'))
 		.then(function() {
 			buf.fill(3);
 			return disk.writeAsync(buf, 0, buf.length, 8);
 		})
+		.then(checkDiskContains(disk, '1111222233333333'))
 		.then(function() {
 			buf.fill(4);
 			return disk.writeAsync(buf, 0, buf.length, 24);
 		})
+		.then(checkDiskContains(disk, '11112222333333330000000044444444'))
 		.then(function() {
 			buf.fill(5);
 			return disk.writeAsync(buf, 0, 2, 3);
 		})
-		.then(function() {
-			const data = Buffer.allocUnsafe(32);
-			return disk.readAsync(data, 0, data.length, 0);
-		})
-		.spread(function(count, data) {
-			assert(data.equals(expected));
-		})
+		.then(checkDiskContains(disk, '11155222333333330000000044444444'))
 		// Test disk readable stream:
 		.then(function() {
 			return disk.getStreamAsync();
@@ -175,8 +209,32 @@ describe('file-disk', function() {
 			return streamToArrayAsync(stream);
 		})
 		.then(function(arr) {
+			const expectedFull = createBuffer(
+				DISK_SIZE,
+				'11155222333333330000000044444444'
+			);
 			assert(Buffer.concat(arr).equals(expectedFull));
-		});
+		})
+		.then(function() {
+			buf.fill(6);
+			return disk.writeAsync(buf, 0, 5, 2);
+		})
+		.then(checkDiskContains(disk, '11666662333333330000000044444444'))
+		.then(function() {
+			buf.fill(7);
+			return disk.writeAsync(buf, 0, 2, 30);
+		})
+		.then(checkDiskContains(disk, '11666662333333330000000044444477'))
+		.then(function() {
+			buf.fill(8);
+			return disk.writeAsync(buf, 0, 8, 14);
+		})
+		.then(checkDiskContains(disk, '11666662333333888888880044444477'))
+		.then(function() {
+			buf.fill(9);
+			return disk.writeAsync(buf, 0, 8, 6);
+		})
+		.then(checkDiskContains(disk, '11666699999999888888880044444477'));
 	}
 
 	it('copy on write mode should properly record overlapping writes', function() {

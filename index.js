@@ -5,6 +5,8 @@ const Readable = require('stream').Readable;
 const fs = Promise.promisifyAll(require('fs'));
 const iisect = require('interval-intersection');
 
+const diskchunk = require('./diskchunk');
+
 const MIN_HIGH_WATER_MARK = 16;
 const DEFAULT_HIGH_WATER_MARK = 16384;
 
@@ -57,61 +59,6 @@ function openFile(path, flags, mode) {
 	});
 }
 
-class DiskChunk {
-	constructor(buffer, offset, copy=true) {
-		if (copy) {
-			this.buffer = Buffer.from(buffer);
-		} else {
-			this.buffer = buffer;
-		}
-		this.start = offset;  // position in file
-		this.end = offset + buffer.length - 1;  // position of the last byte
-	}
-
-	data() {
-		return this.buffer;
-	}
-
-	interval() {
-		return [this.start, this.end];
-	}
-
-	intersection(other) {
-		return iisect(this.interval(), other.interval());
-	}
-
-	intersects(other) {
-		return (this.intersection(other) !== null);
-	}
-
-	includedIn(other) {
-		return ((this.start >= other.start) && (this.end <= other.end));
-	}
-
-	cut(other) {
-		// `other` must be an overlapping `DiskChunk`
-		const result = [];
-		const intersection = this.intersection(other);
-		if (intersection[0] > this.start) {
-			result.push(this.slice(this.start, intersection[0] - 1));
-		}
-		if (this.end > intersection[1]) {
-			result.push(this.slice(intersection[1] + 1, this.end));
-		}
-		return result;
-	}
-
-	slice(start, end) {
-		// start and end are relative to the Disk
-		const startInBuffer = start - this.start;
-		return new DiskChunk(
-			this.buffer.slice(startInBuffer, startInBuffer + end - start + 1),
-			start,
-			false
-		);
-	}
-}
-
 class Disk {
 	// Subclasses need to implement:
 	// * _getCapacity(callback)
@@ -143,8 +90,20 @@ class Disk {
 
 	write(buffer, bufferOffset, length, fileOffset, callback) {
 		if (this.recordWrites) {
-			const end = bufferOffset + length;
-			this._insertDiskChunk(buffer.slice(bufferOffset, end), fileOffset);
+			const chunk = new diskchunk.BufferDiskChunk(
+				buffer.slice(bufferOffset, bufferOffset + length),
+				fileOffset
+			);
+			this._insertDiskChunk(chunk);
+		} else {
+			// Special case: we do not record writes but we may have recorded
+			// some discards. We want to remove any discard overlapping this
+			// write.
+			// In order to do this we do as if we were inserting a chunk: this
+			// will slice existing discards in this area if there are any.
+			const chunk = new diskchunk.DiscardDiskChunk(fileOffset, length);
+			// The `false` below means "don't insert the chunk into knownChunks"
+			this._insertDiskChunk(chunk, false);
 		}
 		if (this.readOnly) {
 			callback(null, length, buffer);
@@ -162,7 +121,7 @@ class Disk {
 	}
 	
 	discard(offset, length, callback) {
-		console.log('UNIMPLEMENTED: discarding', length, 'bytes at offset', offset);  // eslint-disable-line no-console
+		this._insertDiskChunk(new diskchunk.DiscardDiskChunk(offset, length));
 		callback(null);
 	}
 
@@ -185,8 +144,7 @@ class Disk {
 		});
 	}
 
-	_insertDiskChunk(buffer, offset) {
-		const chunk = new DiskChunk(buffer, offset);
+	_insertDiskChunk(chunk, insert=true) {
 		let other, i;
 		let insertAt = 0;
 		for (i = 0; i < this.knownChunks.length; i++) {
@@ -212,7 +170,9 @@ class Disk {
 				i += newChunks.length - 1;
 			}
 		}
-		this.knownChunks.splice(insertAt, 0, chunk);
+		if (insert) {
+			this.knownChunks.splice(insertAt, 0, chunk);
+		}
 	}
 
 	_createReadPlan(buf, offset, length) {
@@ -250,7 +210,7 @@ class Disk {
 			}
 		}
 		for (let entry of plan) {
-			if (entry instanceof DiskChunk) {
+			if (entry instanceof diskchunk.DiskChunk) {
 				entry.data().copy(buffer, offset);
 				offset += entry.data().length;
 				chunksLeft--;
@@ -264,10 +224,11 @@ class Disk {
 						}
 					} else {
 						if (self.recordReads) {
-							self._insertDiskChunk(
+							const chunk = new diskchunk.BufferDiskChunk(
 								buffer.slice(entry[0], entry[1] + 1),
 								entry[0]
 							);
+							self._insertDiskChunk(chunk);
 						}
 						chunksLeft--;
 						done();
@@ -360,7 +321,6 @@ class DiskWrapper {
 }
 
 exports.DiskStream = DiskStream;
-exports.DiskChunk = DiskChunk;  // only exported for tests, TODO: move to a separate file
 exports.openFile = openFile;
 exports.Disk = Disk;
 exports.FileDisk = FileDisk;

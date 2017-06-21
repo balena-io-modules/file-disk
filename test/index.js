@@ -11,6 +11,7 @@ const aws = require('aws-sdk');
 const streamToArrayAsync = Promise.promisifyAll(require('stream-to-array'));
 
 const filedisk = Promise.promisifyAll(require('../'), { multiArgs: true });
+const diskchunk = require('../diskchunk');
 
 const DISK_PATH = path.join(__dirname, 'fixtures', 'zeros');
 const TMP_DISK_PATH = DISK_PATH + '-tmp';
@@ -50,10 +51,10 @@ function testOnAllDisks(fn) {
 	});
 }
 
-describe('DiskChunk', function() {
+describe('BufferDiskChunk', function() {
 	describe('slice', function() {
 		it('0-3, slice 0-2', function() {
-			const chunk = new filedisk.DiskChunk(Buffer.alloc(4), 0);
+			const chunk = new diskchunk.BufferDiskChunk(Buffer.alloc(4), 0);
 			const slice = chunk.slice(0, 2);
 			assert.strictEqual(slice.start, 0);
 			assert.strictEqual(slice.end, 2);
@@ -61,7 +62,7 @@ describe('DiskChunk', function() {
 		});
 
 		it('4-7, slice 5-6', function() {
-			const chunk = new filedisk.DiskChunk(Buffer.alloc(4), 4);
+			const chunk = new diskchunk.BufferDiskChunk(Buffer.alloc(4), 4);
 			const slice = chunk.slice(5, 6);
 			assert.strictEqual(slice.start, 5);
 			assert.strictEqual(slice.end, 6);
@@ -179,7 +180,10 @@ describe('file-disk', function() {
 	function overlappingWrites(disk) {
 		const buf = Buffer.allocUnsafe(8);
 		buf.fill(1);
-		return disk.writeAsync(buf, 0, buf.length, 0)
+		return disk.discardAsync(0, DISK_SIZE)
+		.then(function() {
+			return disk.writeAsync(buf, 0, buf.length, 0);
+		})
 		.then(checkDiskContains(disk, '11111111'))
 		.then(function() {
 			buf.fill(2);

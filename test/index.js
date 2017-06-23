@@ -9,6 +9,7 @@ const path = require('path');
 const assert = require('assert');
 const aws = require('aws-sdk');
 const streamToArrayAsync = Promise.promisifyAll(require('stream-to-array'));
+const sha256 = require('js-sha256').sha256;
 
 const filedisk = Promise.promisifyAll(require('../'), { multiArgs: true });
 const diskchunk = require('../diskchunk');
@@ -25,15 +26,35 @@ const S3 = new aws.S3({
 });
 
 function createDisk(fd) {
+	// read write
+	// don't record reads
+	// don't record writes
+	// discarded chunks are zeros
 	return new filedisk.FileDisk(fd);
 }
 
 function createCowDisk(fd) {
-	return new filedisk.FileDisk(fd, true, true, true);
+	// read only
+	// record writes
+	// record reads
+	// discarded chunks are zeros
+	return new filedisk.FileDisk(fd, true, true, true, true);
+}
+
+function createCowDisk2(fd) {
+	// read only
+	// record writes
+	// don't record reads
+	// read discarded chunks from the disk anyway
+	return new filedisk.FileDisk(fd, true, true, false, false);
 }
 
 function createS3CowDisk() {
-	return new filedisk.S3Disk(S3, 'bucket', 'zeros', true);
+	// read only
+	// record reads
+	// record writes
+	// discarded chunks are zeros
+	return new filedisk.S3Disk(S3, 'bucket', 'zeros', true, true);
 }
 
 function testOnAllDisks(fn) {
@@ -44,6 +65,7 @@ function testOnAllDisks(fn) {
 	return Promise.using(files, function(fds) {
 		const disks = [
 			createCowDisk(fds[0]),
+			createCowDisk2(fds[0]),
 			createDisk(fds[1]),
 			createS3CowDisk()
 		];
@@ -207,7 +229,7 @@ describe('file-disk', function() {
 		.then(checkDiskContains(disk, '11155222333333330000000044444444'))
 		// Test disk readable stream:
 		.then(function() {
-			return disk.getStreamAsync();
+			return disk.getStreamAsync(null, null);
 		})
 		.spread(function(stream) {
 			return streamToArrayAsync(stream);
@@ -238,7 +260,114 @@ describe('file-disk', function() {
 			buf.fill(9);
 			return disk.writeAsync(buf, 0, 8, 6);
 		})
-		.then(checkDiskContains(disk, '11666699999999888888880044444477'));
+		.then(checkDiskContains(disk, '11666699999999888888880044444477'))
+		.then(function() {
+			const discarded = disk.getDiscardedChunks();
+			assert.strictEqual(discarded.length, 2);
+			assert.strictEqual(discarded[0].start, 22);
+			assert.strictEqual(discarded[0].end, 23);
+			assert.strictEqual(discarded[1].start, 32);
+			assert.strictEqual(discarded[1].end, 10239);
+			return disk.getBlockMapAsync(1);
+		})
+		.spread(function(blockmap) {
+			const firstRange = '1166669999999988888888';
+			const secondRange = '44444477';
+			assert.strictEqual(
+				blockmap.ranges[0].checksum,
+				sha256(createBuffer(firstRange.length, firstRange))
+			);
+			assert.strictEqual(
+				blockmap.ranges[1].checksum,
+				sha256(createBuffer(secondRange.length, secondRange))
+			);
+			return disk.getBlockMapAsync(2);
+		})
+		.spread(function(blockmap) {
+			const firstRange = '1166669999999988888888';
+			const secondRange = '44444477';
+			assert.strictEqual(
+				blockmap.ranges[0].checksum,
+				sha256(createBuffer(firstRange.length, firstRange))
+			);
+			assert.strictEqual(
+				blockmap.ranges[1].checksum,
+				sha256(createBuffer(secondRange.length, secondRange))
+			);
+			return disk.getBlockMapAsync(3);
+		})
+		.spread(function(blockmap) {
+			const firstRange = '116666999999998888888800444444770';
+			assert.strictEqual(
+				blockmap.ranges[0].checksum,
+				sha256(createBuffer(firstRange.length, firstRange))
+			);
+			return disk.getBlockMapAsync(4);
+		})
+		.spread(function(blockmap) {
+			const firstRange = '11666699999999888888880044444477';
+			assert.strictEqual(
+				blockmap.ranges[0].checksum,
+				sha256(createBuffer(firstRange.length, firstRange))
+			);
+			return disk.getBlockMapAsync(5);
+		})
+		.spread(function(blockmap) {
+			const firstRange = '11666699999999888888880044444477000';
+			assert.strictEqual(
+				blockmap.ranges[0].checksum,
+				sha256(createBuffer(firstRange.length, firstRange))
+			);
+			return disk.getBlockMapAsync(6);
+		})
+		.spread(function(blockmap) {
+			const firstRange = '116666999999998888888800444444770000';
+			assert.strictEqual(
+				blockmap.ranges[0].checksum,
+				sha256(createBuffer(firstRange.length, firstRange))
+			);
+			return disk.getBlockMapAsync(7);
+		})
+		.spread(function(blockmap) {
+			const firstRange = '11666699999999888888880044444477000';
+			assert.strictEqual(
+				blockmap.ranges[0].checksum,
+				sha256(createBuffer(firstRange.length, firstRange))
+			);
+			return disk.getBlockMapAsync(8);
+		})
+		.spread(function(blockmap) {
+			const firstRange = '11666699999999888888880044444477';
+			assert.strictEqual(
+				blockmap.ranges[0].checksum,
+				sha256(createBuffer(firstRange.length, firstRange))
+			);
+			return disk.getBlockMapAsync(9);
+		})
+		.spread(function(blockmap) {
+			const firstRange = '116666999999998888888800444444770000';
+			assert.strictEqual(
+				blockmap.ranges[0].checksum,
+				sha256(createBuffer(firstRange.length, firstRange))
+			);
+			return disk.getBlockMapAsync(10);
+		})
+		.spread(function(blockmap) {
+			const firstRange = '1166669999999988888888004444447700000000';
+			assert.strictEqual(
+				blockmap.ranges[0].checksum,
+				sha256(createBuffer(firstRange.length, firstRange))
+			);
+			return disk.getBlockMapAsync(11);
+		})
+		.spread(function(blockmap) {
+			const firstRange = '116666999999998888888800444444770';
+			assert.strictEqual(
+				blockmap.ranges[0].checksum,
+				sha256(createBuffer(firstRange.length, firstRange))
+			);
+			return disk.getBlockMapAsync(11);
+		});
 	}
 
 	it('copy on write mode should properly record overlapping writes', function() {

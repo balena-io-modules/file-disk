@@ -10,12 +10,15 @@ any time!**
 
 ### FileDisk
 
-`new FileDisk(fd, readOnly, recordWrites)`
+`new FileDisk(fd, readOnly, recordWrites, recordReads, discardIsZero=true)`
 
  - `fd` is a file descriptor returned by `fs.open`
  - `readOnly` a boolean (default `false`)
  - `recordWrites`, a boolean (default `false`); if you use `readOnly` without
  `recordWrites`, all write requests will be lost.
+ - `recordReads`, a boolean (default `false`): cache reads in memory
+ - `discardIsZero`, a boolean (default `true`): don't read discarded regions,
+ return zero filled buffers instead.
 
 `FileDisk.getCapacity(callback(err, size))`
 
@@ -38,12 +41,23 @@ any time!**
 
  - not implemented
 
-`FileDisk.getStream(highWaterMark, callback(err, stream))`
-
+`FileDisk.getStream(position, length, highWaterMark, callback(err, stream))`
+ - `position` start reading from this offset (`null` means zero)
+ - `length` read that amount of bytes (`null` means read until the end)
  - `highWaterMark` [optional, defaults to 16384, minimum 16] is the size of
  chunks that will be read
  - `callback(err, stream)` will be called with a readable stream of the disk
  content
+
+`FileDisk.getDiscardedChunks()` returns the list of discarded chunks. Each chunk
+has a `start` and `end` properties. `end` position is inclusive.
+
+`FileDisk.getBlockMap(blockSize, callback(err, blockmap))` using the disk's
+discarded chunks and the given blockSize, it calls back with
+a [`BlockMap`](https://github.com/resin-io-modules/blockmap).
+Be careful to how you use `Disk`'s `discardIsZero` option as it may change the
+blockmap ranges checksums if discarded regions not aligned with `blockSize`
+contain anything else than zeros on the disk.
 
 ### S3Disk
 
@@ -51,7 +65,7 @@ any time!**
 the filesystem. `S3Disk` has `readOnly` and `recordWrites` enabled. This can
 not be changed.
 
-`new S3Disk(s3, bucket, key)`
+`new S3Disk(s3, bucket, key, recordReads, discardIsZero=true)`
 
  - `s3` is an s3 connection.
  - `bucket` is the S3 bucket to use.
@@ -121,7 +135,7 @@ Promise.using(filedisk.openFile('/path/to/some/file', 'r'), function(fd) {
 		assert(buf.equals(buf2));
 	})
 	.then(function() {
-		return disk.getStreamAsync();
+		return disk.getStreamAsync(null, null);
 	})
 	.spread(function(stream) {
 		// pipe the stream somewhere

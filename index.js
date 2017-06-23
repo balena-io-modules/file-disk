@@ -5,17 +5,18 @@ const Readable = require('stream').Readable;
 const fs = Promise.promisifyAll(require('fs'));
 const iisect = require('interval-intersection');
 
+const blockmap = require('./blockmap');
 const diskchunk = require('./diskchunk');
 
 const MIN_HIGH_WATER_MARK = 16;
 const DEFAULT_HIGH_WATER_MARK = 16384;
 
 class DiskStream extends Readable {
-	constructor(disk, capacity, highWaterMark) {
+	constructor(disk, capacity, highWaterMark, start) {
 		super({highWaterMark: Math.max(highWaterMark, MIN_HIGH_WATER_MARK)});
 		this.disk = disk;
 		this.capacity = capacity;
-		this.position = 0;
+		this.position = start;
 	}
 
 	_read() {
@@ -28,7 +29,7 @@ class DiskStream extends Readable {
 			self.push(null);
 			return;
 		}
-		const buffer = Buffer.allocUnsafe(self._readableState.highWaterMark);
+		const buffer = Buffer.allocUnsafe(length);
 		self.disk.read(
 			buffer,
 			0,  // buffer offset
@@ -40,7 +41,7 @@ class DiskStream extends Readable {
 					return;
 				}
 				self.position += length;
-				self.push(buf.slice(0, length));
+				self.push(buf);
 			}
 		);
 	}
@@ -76,11 +77,13 @@ class Disk {
 	// * getStream(highWaterMark, callback(err, stream))
 	//   * highWaterMark [optional] is the size of chunks that will be read (default 16384, minimum 16)
 	//   * `stream` will be a readable stream of the disk
-	constructor(readOnly, recordWrites, recordReads) {
+	constructor(readOnly, recordWrites, recordReads, discardIsZero=true) {
 		this.readOnly = readOnly;
 		this.recordWrites = recordWrites;
 		this.recordReads = recordReads;
+		this.discardIsZero = discardIsZero;
 		this.knownChunks = [];  // sorted list of non overlapping DiskChunks
+		this.capacity = null;
 	}
 
 	read(buffer, bufferOffset, length, fileOffset, callback) {
@@ -126,13 +129,33 @@ class Disk {
 	}
 
 	getCapacity(callback) {
-		this._getCapacity(callback);
+		if (this.capacity !== null) {
+			callback(null, this.capacity);
+			return;
+		}
+		const self = this;
+		this._getCapacity(function(err, capacity) {
+			if (err) {
+				callback(err);
+				return;
+			}
+			self.capacity = capacity;
+			callback(null, capacity);
+		});
 	}
 
-	getStream(highWaterMark, callback) {
+	getStream(position, length, highWaterMark, callback) {
+		position = Number.isInteger(position) ? position : 0;
 		if ((typeof highWaterMark === 'function') && (callback === undefined)) {
 			callback = highWaterMark;
 			highWaterMark = DEFAULT_HIGH_WATER_MARK;
+		}
+		if (Number.isInteger(length)) {
+			callback(
+				null,
+				new DiskStream(this, position + length, highWaterMark, position)
+			);
+			return;
 		}
 		const self = this;
 		self.getCapacity(function(err, capacity) {
@@ -140,7 +163,27 @@ class Disk {
 				callback(err);
 				return;
 			}
-			callback(null, new DiskStream(self, capacity, highWaterMark));
+			callback(
+				null,
+				new DiskStream(self, capacity, highWaterMark, position)
+			);
+		});
+	}
+
+	getDiscardedChunks() {
+		return this.knownChunks.filter(function(chunk) {
+			return (chunk instanceof diskchunk.DiscardDiskChunk);
+		});
+	}
+
+	getBlockMap(blockSize, callback) {
+		const self = this;
+		this.getCapacity(function(err, capacity) {
+			if (err) {
+				callback(err);
+				return;
+			}
+			blockmap.getBlockMap(self, blockSize, capacity, callback);
 		});
 	}
 
@@ -178,7 +221,13 @@ class Disk {
 	_createReadPlan(buf, offset, length) {
 		const end = offset + length - 1;
 		const interval = [offset, end];
-		const intersections = this.knownChunks.filter(function(w) {
+		let chunks = this.knownChunks;
+		if (!this.discardIsZero) {
+			chunks = chunks.filter(function(chunk) {
+				return !(chunk instanceof diskchunk.DiscardDiskChunk);
+			});
+		}
+		const intersections = chunks.filter(function(w) {
 			return (iisect(interval, w.interval()) !== null);
 		});
 		if (intersections.length === 0) {
@@ -271,8 +320,8 @@ class FileDisk extends Disk {
 }
 
 class S3Disk extends Disk {
-	constructor(s3, bucket, key, recordReads) {
-		super(true, true, recordReads);
+	constructor(s3, bucket, key, recordReads, discardIsZero=true) {
+		super(true, true, recordReads, discardIsZero);
 		this.s3 = s3;
 		this.bucket = bucket;
 		this.key = key;

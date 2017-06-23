@@ -77,7 +77,8 @@ class Disk {
 	// * getStream(highWaterMark, callback(err, stream))
 	//   * highWaterMark [optional] is the size of chunks that will be read (default 16384, minimum 16)
 	//   * `stream` will be a readable stream of the disk
-	constructor(readOnly, recordWrites, recordReads, discardIsZero=true) {
+	constructor(readOnly, recordWrites, recordReads, discardIsZero) {
+		discardIsZero = (discardIsZero === undefined) ? true : discardIsZero;
 		this.readOnly = readOnly;
 		this.recordWrites = recordWrites;
 		this.recordReads = recordReads;
@@ -187,7 +188,8 @@ class Disk {
 		});
 	}
 
-	_insertDiskChunk(chunk, insert=true) {
+	_insertDiskChunk(chunk, insert) {
+		insert = (insert === undefined) ? true : insert;
 		let other, i;
 		let insertAt = 0;
 		for (i = 0; i < this.knownChunks.length; i++) {
@@ -209,7 +211,8 @@ class Disk {
 			} else {
 				// Cut other
 				const newChunks = other.cut(chunk);
-				this.knownChunks.splice(i, 1, ...newChunks);
+				const args = [i, 1].concat(newChunks);
+				this.knownChunks.splice.apply(this.knownChunks, args);
 				i += newChunks.length - 1;
 			}
 		}
@@ -320,7 +323,8 @@ class FileDisk extends Disk {
 }
 
 class S3Disk extends Disk {
-	constructor(s3, bucket, key, recordReads, discardIsZero=true) {
+	constructor(s3, bucket, key, recordReads, discardIsZero) {
+		discardIsZero = (discardIsZero === undefined) ? true : discardIsZero;
 		super(true, true, recordReads, discardIsZero);
 		this.s3 = s3;
 		this.bucket = bucket;

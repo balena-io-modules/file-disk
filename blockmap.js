@@ -1,3 +1,5 @@
+'use strict';
+
 const BlockMap = require('blockmap');
 const sha256 = require('js-sha256').sha256;
 

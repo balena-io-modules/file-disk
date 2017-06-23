@@ -39,7 +39,8 @@ class DiskChunk {
 }
 
 class BufferDiskChunk extends DiskChunk {
-	constructor(buffer, offset, copy=true) {
+	constructor(buffer, offset, copy) {
+		copy = (copy === undefined) ? true : copy;
 		super(offset, offset + buffer.length - 1);
 		if (copy) {
 			this.buffer = Buffer.from(buffer);

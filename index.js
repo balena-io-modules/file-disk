@@ -88,7 +88,7 @@ class Disk {
 	}
 
 	read(buffer, bufferOffset, length, fileOffset, callback) {
-		const plan = this._createReadPlan(buffer, fileOffset, length);
+		const plan = this._createReadPlan(fileOffset, length);
 		this._readAccordingToPlan(buffer, plan, callback);
 	}
 
@@ -221,7 +221,7 @@ class Disk {
 		}
 	}
 
-	_createReadPlan(buf, offset, length) {
+	_createReadPlan(offset, length) {
 		const end = offset + length - 1;
 		const interval = [offset, end];
 		let chunks = this.knownChunks;
@@ -230,23 +230,26 @@ class Disk {
 				return !(chunk instanceof diskchunk.DiscardDiskChunk);
 			});
 		}
-		const intersections = chunks.filter(function(w) {
-			return (iisect(interval, w.interval()) !== null);
+		const intersections = chunks.map(function(chunk) {
+			const inter = iisect(interval, chunk.interval());
+			return (inter !== null) ? chunk.slice(inter[0], inter[1]) : null;
+		}).filter(function(chunk) {
+			return (chunk !== null);
 		});
 		if (intersections.length === 0) {
 			return [ [ offset, end ] ];
 		}
 		const readPlan = [];
-		let w;
-		for (w of intersections) {
-			if (offset < w.start) {
-				readPlan.push([offset, w.start - 1]);
+		let chunk;
+		for (chunk of intersections) {
+			if (offset < chunk.start) {
+				readPlan.push([offset, chunk.start - 1]);
 			}
-			readPlan.push(w);
-			offset = w.end + 1;
+			readPlan.push(chunk);
+			offset = chunk.end + 1;
 		}
-		if (w && (end > w.end)) {
-			readPlan.push([w.end + 1, end]);
+		if (chunk && (end > chunk.end)) {
+			readPlan.push([chunk.end + 1, end]);
 		}
 		return readPlan;
 	}
@@ -263,29 +266,36 @@ class Disk {
 		}
 		for (let entry of plan) {
 			if (entry instanceof diskchunk.DiskChunk) {
-				entry.data().copy(buffer, offset);
-				offset += entry.data().length;
+				const data = entry.data();
+				const length = Math.min(data.length, buffer.length - offset);
+				data.copy(buffer, offset, 0, length);
+				offset += length;
 				chunksLeft--;
 			} else {
 				const length = entry[1] - entry[0] + 1;
-				this._read(buffer, offset, length, entry[0], function(err) {
-					if (err) {
-						if (!failed) {
-							callback(err.errno);
-							failed = true;
+				(function(entry, offset, length) {
+					self._read(buffer, offset, length, entry[0], function(err) {
+						if (err) {
+							if (!failed) {
+								callback(err.errno);
+								failed = true;
+							}
+						} else {
+							if (self.recordReads) {
+								const slice = Buffer.from(
+									buffer.slice(offset, offset + length)
+								);
+								const chunk = new diskchunk.BufferDiskChunk(
+									slice,
+									entry[0]
+								);
+								self._insertDiskChunk(chunk);
+							}
+							chunksLeft--;
+							done();
 						}
-					} else {
-						if (self.recordReads) {
-							const chunk = new diskchunk.BufferDiskChunk(
-								buffer.slice(entry[0], entry[1] + 1),
-								entry[0]
-							);
-							self._insertDiskChunk(chunk);
-						}
-						chunksLeft--;
-						done();
-					}
-				});
+					});
+				})(entry, offset, length);
 				offset += length;
 			}
 		}

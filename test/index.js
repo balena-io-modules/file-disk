@@ -8,8 +8,8 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 const aws = require('aws-sdk');
+const crypto = require('crypto');
 const streamToArrayAsync = Promise.promisifyAll(require('stream-to-array'));
-const sha256 = require('js-sha256').sha256;
 
 const filedisk = Promise.promisifyAll(require('../'), { multiArgs: true });
 const diskchunk = require('../diskchunk');
@@ -24,6 +24,12 @@ const S3 = new aws.S3({
 	s3ForcePathStyle: true,
 	sslEnabled: false
 });
+
+function sha256(buffer) {
+	const hash = crypto.createHash('sha256');
+	hash.update(buffer);
+	return hash.digest('hex');
+}
 
 function createDisk(fd) {
 	// read write

@@ -1,7 +1,7 @@
 'use strict';
 
 const BlockMap = require('blockmap');
-const sha256 = require('js-sha256').sha256;
+const crypto = require('crypto');
 
 function getNotDiscardedChunks(disk, blockSize, capacity) {
 	const chunks = [];
@@ -34,13 +34,13 @@ function mergeBlocks(blocks) {
 }
 
 function streamSha256(stream, callback) {
-	const hash = sha256.create();
+	const hash = crypto.createHash('sha256');
 	stream.on('data', function(data) {
 		hash.update(data);
 	});
 	stream.on('error', callback);
 	stream.on('end', function() {
-		callback(null, hash.hex());
+		callback(null, hash.digest('hex'));
 	});
 }
 
@@ -105,7 +105,9 @@ function roundChunksToBlockSize(chunks, blockSize) {
 
 function calculateBmapSha256(bmap){
 	bmap.checksum = Array(64).join('0');
-	bmap.checksum = sha256(bmap.toString());
+	const hash = crypto.createHash('sha256');
+	hash.update(bmap.toString());
+	bmap.checksum = hash.digest('hex');
 }
 
 exports.getBlockMap = function(disk, blockSize, capacity, callback) {

@@ -18,6 +18,7 @@ function getNotDiscardedChunks(disk, blockSize, capacity) {
 }
 
 function mergeBlocks(blocks) {
+	// Merges adjacent blocks in place (helper for getBlockMap).
 	if (blocks.length > 1) {
 		let last = blocks[0];
 		for (let i = 1; i < blocks.length; i++) {
@@ -87,22 +88,6 @@ function getRanges(disk, blocks, blockSize, callback) {
 	}
 }
 
-function roundChunksToBlockSize(chunks, blockSize) {
-	return chunks.map(function(chunk) {
-		let start = chunk[0];
-		const remainder = start % blockSize;
-		if (remainder !== 0) {
-			start -= remainder;
-		}
-		let end = chunk[1];
-		let endExcluded = end + 1;
-		if (endExcluded % blockSize !== 0) {
-			end = (Math.floor(endExcluded / blockSize) + 1) * blockSize;
-		}
-		return [start, endExcluded - 1];
-	});
-}
-
 function calculateBmapSha256(bmap){
 	bmap.checksum = Array(64).join('0');
 	const hash = crypto.createHash('sha256');
@@ -112,9 +97,10 @@ function calculateBmapSha256(bmap){
 
 exports.getBlockMap = function(disk, blockSize, capacity, callback) {
 	const chunks = getNotDiscardedChunks(disk, blockSize, capacity);
-	let blocks = roundChunksToBlockSize(chunks, blockSize);
-	blocks = blocks.map(function(block) {
-		return [ block[0] / blockSize, Math.floor((block[1] / blockSize)) ];
+	const blocks = chunks.map(function(chunk) {
+		return chunk.map(function(pos) {
+			return Math.floor(pos / blockSize);
+		});
 	});
 	mergeBlocks(blocks);
 	const mappedBlockCount = blocks.map(function(block) {

@@ -186,8 +186,9 @@ describe('file-disk', function() {
 		return testOnAllDisks(shouldReadAndWrite);
 	});
 
-	function createBuffer(size, pattern) {
+	function createBuffer(pattern, size) {
 		// Helper for checking disk contents.
+		size = (size === undefined) ? pattern.length : size;
 		const buffer = Buffer.alloc(size);
 		Buffer.from(Array.from(pattern).map(Number)).copy(buffer);
 		return buffer;
@@ -197,7 +198,7 @@ describe('file-disk', function() {
 		// Helper for checking disk contents.
 		return function() {
 			const size = 32;
-			const expected = createBuffer(size, pattern);
+			const expected = createBuffer(pattern, size);
 			return disk.readAsync(Buffer.allocUnsafe(size), 0, size, 0)
 			.spread(function(count, real) {
 				assert(real.equals(expected));
@@ -242,8 +243,8 @@ describe('file-disk', function() {
 		})
 		.then(function(arr) {
 			const expectedFull = createBuffer(
-				DISK_SIZE,
-				'11155222333333330000000044444444'
+				'11155222333333330000000044444444',
+				DISK_SIZE
 			);
 			assert(Buffer.concat(arr).equals(expectedFull));
 		})
@@ -281,11 +282,11 @@ describe('file-disk', function() {
 			const secondRange = '44444477';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange.length, firstRange))
+				sha256(createBuffer(firstRange))
 			);
 			assert.strictEqual(
 				blockmap.ranges[1].checksum,
-				sha256(createBuffer(secondRange.length, secondRange))
+				sha256(createBuffer(secondRange))
 			);
 			return disk.getBlockMapAsync(2);
 		})
@@ -294,11 +295,11 @@ describe('file-disk', function() {
 			const secondRange = '44444477';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange.length, firstRange))
+				sha256(createBuffer(firstRange))
 			);
 			assert.strictEqual(
 				blockmap.ranges[1].checksum,
-				sha256(createBuffer(secondRange.length, secondRange))
+				sha256(createBuffer(secondRange))
 			);
 			return disk.getBlockMapAsync(3);
 		})
@@ -306,7 +307,7 @@ describe('file-disk', function() {
 			const firstRange = '116666999999998888888800444444770';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange.length, firstRange))
+				sha256(createBuffer(firstRange))
 			);
 			return disk.getBlockMapAsync(4);
 		})
@@ -314,7 +315,7 @@ describe('file-disk', function() {
 			const firstRange = '11666699999999888888880044444477';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange.length, firstRange))
+				sha256(createBuffer(firstRange))
 			);
 			return disk.getBlockMapAsync(5);
 		})
@@ -322,7 +323,7 @@ describe('file-disk', function() {
 			const firstRange = '11666699999999888888880044444477000';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange.length, firstRange))
+				sha256(createBuffer(firstRange))
 			);
 			return disk.getBlockMapAsync(6);
 		})
@@ -330,7 +331,7 @@ describe('file-disk', function() {
 			const firstRange = '116666999999998888888800444444770000';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange.length, firstRange))
+				sha256(createBuffer(firstRange))
 			);
 			return disk.getBlockMapAsync(7);
 		})
@@ -338,7 +339,7 @@ describe('file-disk', function() {
 			const firstRange = '11666699999999888888880044444477000';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange.length, firstRange))
+				sha256(createBuffer(firstRange))
 			);
 			return disk.getBlockMapAsync(8);
 		})
@@ -346,7 +347,7 @@ describe('file-disk', function() {
 			const firstRange = '11666699999999888888880044444477';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange.length, firstRange))
+				sha256(createBuffer(firstRange))
 			);
 			return disk.getBlockMapAsync(9);
 		})
@@ -354,7 +355,7 @@ describe('file-disk', function() {
 			const firstRange = '116666999999998888888800444444770000';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange.length, firstRange))
+				sha256(createBuffer(firstRange))
 			);
 			return disk.getBlockMapAsync(10);
 		})
@@ -362,7 +363,7 @@ describe('file-disk', function() {
 			const firstRange = '1166669999999988888888004444447700000000';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange.length, firstRange))
+				sha256(createBuffer(firstRange))
 			);
 			return disk.getBlockMapAsync(11);
 		})
@@ -370,7 +371,7 @@ describe('file-disk', function() {
 			const firstRange = '116666999999998888888800444444770';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange.length, firstRange))
+				sha256(createBuffer(firstRange))
 			);
 			return disk.getBlockMapAsync(11);
 		});

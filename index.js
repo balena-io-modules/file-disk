@@ -74,8 +74,10 @@ class Disk {
 	// * write(buffer, bufferOffset, length, fileOffset, callback(err, bytesWritten))
 	// * flush(callback(err))
 	// * discard(offset, length, callback(err))
-	// * getStream(highWaterMark, callback(err, stream))
-	//   * highWaterMark [optional] is the size of chunks that will be read (default 16384, minimum 16)
+	// * getStream([position, [length, [highWaterMark]]], callback(err, stream))
+	//   * position: start reading from this offset (defaults to zero)
+	//   * length: read that amount of bytes (defaults to (disk capacity - position))
+	//   * highWaterMark: size of chunks that will be read (default 16384, minimum 16)
 	//   * `stream` will be a readable stream of the disk
 	constructor(readOnly, recordWrites, recordReads, discardIsZero) {
 		discardIsZero = (discardIsZero === undefined) ? true : discardIsZero;
@@ -145,29 +147,33 @@ class Disk {
 		});
 	}
 
-	getStream(position, length, highWaterMark, callback) {
+	getStream() {
+		// args: ([position, [length, [highWaterMark]]], callback)
+		const callback = arguments[arguments.length - 1];
+		let position, length, highWaterMark;
+		if (arguments.length >= 2) {
+			position = arguments[0];
+		}
+		if (arguments.length >= 3) {
+			length = arguments[1];
+		}
+		if (arguments.length >= 4) {
+			highWaterMark = arguments[2];
+		}
 		position = Number.isInteger(position) ? position : 0;
-		if ((typeof highWaterMark === 'function') && (callback === undefined)) {
-			callback = highWaterMark;
+		if (!Number.isInteger(highWaterMark)) {
 			highWaterMark = DEFAULT_HIGH_WATER_MARK;
 		}
-		if (Number.isInteger(length)) {
-			callback(
-				null,
-				new DiskStream(this, position + length, highWaterMark, position)
-			);
-			return;
-		}
 		const self = this;
-		self.getCapacity(function(err, capacity) {
+		self.getCapacity(function(err, end) {
 			if (err) {
 				callback(err);
 				return;
 			}
-			callback(
-				null,
-				new DiskStream(self, capacity, highWaterMark, position)
-			);
+			if (Number.isInteger(length)) {
+				end = Math.min(position + length, end);
+			}
+			callback(null,new DiskStream(self, end, highWaterMark, position));
 		});
 	}
 

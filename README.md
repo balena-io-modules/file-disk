@@ -41,11 +41,11 @@ any time!**
 
  - not implemented
 
-`FileDisk.getStream(position, length, highWaterMark, callback(err, stream))`
- - `position` start reading from this offset (`null` means zero)
- - `length` read that amount of bytes (`null` means read until the end)
- - `highWaterMark` [optional, defaults to 16384, minimum 16] is the size of
- chunks that will be read
+`FileDisk.getStream([position, [length, [highWaterMark]]], callback(err, stream))`
+ - `position` start reading from this offset (defaults to 0)
+ - `length` read that amount of bytes (defaults to (disk capacity - position))
+ - `highWaterMark` (defaults to 16384, minimum 16) is the size of chunks that
+ will be read
  - `callback(err, stream)` will be called with a readable stream of the disk
  content
 
@@ -135,7 +135,7 @@ Promise.using(filedisk.openFile('/path/to/some/file', 'r'), function(fd) {
 		assert(buf.equals(buf2));
 	})
 	.then(function() {
-		return disk.getStreamAsync(null, null);
+		return disk.getStreamAsync();
 	})
 	.spread(function(stream) {
 		// pipe the stream somewhere

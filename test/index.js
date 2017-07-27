@@ -236,7 +236,7 @@ describe('file-disk', function() {
 		.then(checkDiskContains(disk, '11155222333333330000000044444444'))
 		// Test disk readable stream:
 		.then(function() {
-			return disk.getStreamAsync(null, null);
+			return disk.getStreamAsync();
 		})
 		.spread(function(stream) {
 			return streamToArrayAsync(stream);
@@ -248,6 +248,32 @@ describe('file-disk', function() {
 			);
 			assert(Buffer.concat(arr).equals(expectedFull));
 		})
+		// Test getStream with start position
+		.then(function() {
+			return disk.getStreamAsync(3);
+		})
+		.spread(function(stream) {
+			return streamToArrayAsync(stream);
+		})
+		.then(function(arr) {
+			const expectedFull = createBuffer(
+				'55222333333330000000044444444',
+				DISK_SIZE - 3
+			);
+			assert(Buffer.concat(arr).equals(expectedFull));
+		})
+		// Test getStream with start position and length
+		.then(function() {
+			return disk.getStreamAsync(3, 4);
+		})
+		.spread(function(stream) {
+			return streamToArrayAsync(stream);
+		})
+		.then(function(arr) {
+			const expectedFull = createBuffer('5522');
+			assert(Buffer.concat(arr).equals(expectedFull));
+		})
+		//
 		.then(function() {
 			buf.fill(6);
 			return disk.writeAsync(buf, 0, 5, 2);

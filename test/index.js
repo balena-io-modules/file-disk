@@ -401,7 +401,6 @@ describe('file-disk', function() {
 				blockmap.ranges[0].checksum,
 				sha256(createBuffer(firstRange))
 			);
-			return disk.getBlockMapAsync(11);
 		});
 	}
 

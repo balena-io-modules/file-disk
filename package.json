@@ -21,7 +21,7 @@
     "stream-to-array": "2.3.0"
   },
   "dependencies": {
-    "blockmap": "^1.2.0",
+    "blockmap": "^2.0.2",
     "bluebird": "3.5.0",
     "interval-intersection": "1.0.0"
   }

@@ -12,7 +12,7 @@
   "homepage": "https://github.com/resin-io-modules/file-disk",
   "scripts": {
     "pretest": "eslint index.js diskchunk.js blockmap.js test/index.js && ./test/start_minio.sh",
-    "test": "mocha"
+    "test": "mocha; ./test/stop_minio.sh"
   },
   "devDependencies": {
     "aws-sdk": "2.39.0",

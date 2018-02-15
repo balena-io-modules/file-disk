@@ -14,7 +14,9 @@ const streamToArrayAsync = Promise.promisifyAll(require('stream-to-array'));
 const filedisk = Promise.promisifyAll(require('../'), { multiArgs: true });
 const diskchunk = require('../diskchunk');
 
-const DISK_PATH = path.join(__dirname, 'fixtures', 'zeros');
+const BUCKET_NAME = 'fixtures';
+const FILE_NAME = 'zeros';
+const DISK_PATH = path.join(__dirname, BUCKET_NAME, FILE_NAME);
 const TMP_DISK_PATH = DISK_PATH + '-tmp';
 const DISK_SIZE = 10240;
 const S3 = new aws.S3({
@@ -60,7 +62,7 @@ function createS3CowDisk() {
 	// record reads
 	// record writes
 	// discarded chunks are zeros
-	return new filedisk.S3Disk(S3, 'bucket', 'zeros', true, true);
+	return new filedisk.S3Disk(S3, BUCKET_NAME, FILE_NAME, true, true);
 }
 
 function testOnAllDisks(fn) {

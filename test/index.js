@@ -303,7 +303,7 @@ describe('file-disk', function() {
 			assert.strictEqual(discarded[0].end, 23);
 			assert.strictEqual(discarded[1].start, 32);
 			assert.strictEqual(discarded[1].end, 10239);
-			return disk.getBlockMapAsync(1);
+			return disk.getBlockMapAsync(1, true);
 		})
 		.spread(function(blockmap) {
 			const firstRange = '1166669999999988888888';
@@ -316,7 +316,7 @@ describe('file-disk', function() {
 				blockmap.ranges[1].checksum,
 				sha256(createBuffer(secondRange))
 			);
-			return disk.getBlockMapAsync(2);
+			return disk.getBlockMapAsync(2, true);
 		})
 		.spread(function(blockmap) {
 			const firstRange = '1166669999999988888888';
@@ -329,7 +329,7 @@ describe('file-disk', function() {
 				blockmap.ranges[1].checksum,
 				sha256(createBuffer(secondRange))
 			);
-			return disk.getBlockMapAsync(3);
+			return disk.getBlockMapAsync(3, true);
 		})
 		.spread(function(blockmap) {
 			const firstRange = '116666999999998888888800444444770';
@@ -337,7 +337,7 @@ describe('file-disk', function() {
 				blockmap.ranges[0].checksum,
 				sha256(createBuffer(firstRange))
 			);
-			return disk.getBlockMapAsync(4);
+			return disk.getBlockMapAsync(4, true);
 		})
 		.spread(function(blockmap) {
 			const firstRange = '11666699999999888888880044444477';
@@ -345,7 +345,7 @@ describe('file-disk', function() {
 				blockmap.ranges[0].checksum,
 				sha256(createBuffer(firstRange))
 			);
-			return disk.getBlockMapAsync(5);
+			return disk.getBlockMapAsync(5, true);
 		})
 		.spread(function(blockmap) {
 			const firstRange = '11666699999999888888880044444477000';
@@ -353,7 +353,7 @@ describe('file-disk', function() {
 				blockmap.ranges[0].checksum,
 				sha256(createBuffer(firstRange))
 			);
-			return disk.getBlockMapAsync(6);
+			return disk.getBlockMapAsync(6, true);
 		})
 		.spread(function(blockmap) {
 			const firstRange = '116666999999998888888800444444770000';
@@ -361,7 +361,7 @@ describe('file-disk', function() {
 				blockmap.ranges[0].checksum,
 				sha256(createBuffer(firstRange))
 			);
-			return disk.getBlockMapAsync(7);
+			return disk.getBlockMapAsync(7, true);
 		})
 		.spread(function(blockmap) {
 			const firstRange = '11666699999999888888880044444477000';
@@ -369,7 +369,7 @@ describe('file-disk', function() {
 				blockmap.ranges[0].checksum,
 				sha256(createBuffer(firstRange))
 			);
-			return disk.getBlockMapAsync(8);
+			return disk.getBlockMapAsync(8, true);
 		})
 		.spread(function(blockmap) {
 			const firstRange = '11666699999999888888880044444477';
@@ -377,7 +377,7 @@ describe('file-disk', function() {
 				blockmap.ranges[0].checksum,
 				sha256(createBuffer(firstRange))
 			);
-			return disk.getBlockMapAsync(9);
+			return disk.getBlockMapAsync(9, true);
 		})
 		.spread(function(blockmap) {
 			const firstRange = '116666999999998888888800444444770000';
@@ -385,7 +385,7 @@ describe('file-disk', function() {
 				blockmap.ranges[0].checksum,
 				sha256(createBuffer(firstRange))
 			);
-			return disk.getBlockMapAsync(10);
+			return disk.getBlockMapAsync(10, true);
 		})
 		.spread(function(blockmap) {
 			const firstRange = '1166669999999988888888004444447700000000';
@@ -393,7 +393,7 @@ describe('file-disk', function() {
 				blockmap.ranges[0].checksum,
 				sha256(createBuffer(firstRange))
 			);
-			return disk.getBlockMapAsync(11);
+			return disk.getBlockMapAsync(11, true);
 		})
 		.spread(function(blockmap) {
 			const firstRange = '116666999999998888888800444444770';

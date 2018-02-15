@@ -183,14 +183,14 @@ class Disk {
 		});
 	}
 
-	getBlockMap(blockSize, callback) {
+	getBlockMap(blockSize, calculateChecksums, callback) {
 		const self = this;
 		this.getCapacity(function(err, capacity) {
 			if (err) {
 				callback(err);
 				return;
 			}
-			blockmap.getBlockMap(self, blockSize, capacity, callback);
+			blockmap.getBlockMap(self, blockSize, capacity, calculateChecksums, callback);
 		});
 	}
 

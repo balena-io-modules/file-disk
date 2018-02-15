@@ -45,8 +45,14 @@ function streamSha256(stream, callback) {
 	});
 }
 
-function getRanges(disk, blocks, blockSize, callback) {
-	const result = new Array(blocks.length);
+function getRanges(disk, blocks, blockSize, calculateChecksums, callback) {
+	const result = blocks.map((block) => {
+		return { start: block[0], end: block[1], checksum: null };
+	});
+	if (!calculateChecksums) {
+		callback(null, result);
+		return;
+	}
 	let wait = blocks.length;
 	let block, i, start, length;
 	let error = false;
@@ -54,7 +60,7 @@ function getRanges(disk, blocks, blockSize, callback) {
 		block = blocks[i];
 		start  = block[0] * blockSize;
 		length = (block[1] - block[0] + 1) * blockSize;
-		(function(i, start, length, block) {
+		(function(i, start, length) {
 			disk.getStream(start, length, function(err, stream) {
 				if (err) {
 					if (!error) {
@@ -73,18 +79,14 @@ function getRanges(disk, blocks, blockSize, callback) {
 						wait -= 1;
 						return;
 					}
-					result[i] = {
-						start: block[0],
-						end: block[1],
-						checksum: hex
-					};
+					result[i].checksum = hex;
 					wait -= 1;
 					if (wait === 0) {
 						callback(null, result);
 					}
 				});
 			});
-		})(i, start, length, block);
+		})(i, start, length);
 	}
 }
 
@@ -95,7 +97,7 @@ function calculateBmapSha256(bmap){
 	bmap.checksum = hash.digest('hex');
 }
 
-exports.getBlockMap = function(disk, blockSize, capacity, callback) {
+exports.getBlockMap = function(disk, blockSize, capacity, calculateChecksums, callback) {
 	const chunks = getNotDiscardedChunks(disk, blockSize, capacity);
 	const blocks = chunks.map(function(chunk) {
 		return chunk.map(function(pos) {
@@ -108,7 +110,7 @@ exports.getBlockMap = function(disk, blockSize, capacity, callback) {
 	}).reduce(function(a, b) {
 		return a + b;
 	});
-	getRanges(disk, blocks, blockSize, function(err, ranges) {
+	getRanges(disk, blocks, blockSize, calculateChecksums, function(err, ranges) {
 		if (err) {
 			callback(err);
 			return;

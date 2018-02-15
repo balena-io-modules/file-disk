@@ -52,7 +52,7 @@ any time!**
 `FileDisk.getDiscardedChunks()` returns the list of discarded chunks. Each chunk
 has a `start` and `end` properties. `end` position is inclusive.
 
-`FileDisk.getBlockMap(blockSize, callback(err, blockmap))` using the disk's
+`FileDisk.getBlockMap(blockSize, calculateChecksums, callback(err, blockmap))` using the disk's
 discarded chunks and the given blockSize, it calls back with
 a [`BlockMap`](https://github.com/resin-io-modules/blockmap).
 Be careful to how you use `Disk`'s `discardIsZero` option as it may change the

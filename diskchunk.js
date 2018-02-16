@@ -65,8 +65,7 @@ class DiskChunk {
 `BufferDiskChunk` is a `DiskChunk` baked by a `Buffer`
 */
 class BufferDiskChunk extends DiskChunk {
-	constructor(buffer, offset, copy) {
-		copy = (copy === undefined) ? true : copy;
+	constructor(buffer, offset, copy=true) {
 		super(offset, offset + buffer.length - 1);
 		if (copy) {
 			this.buffer = Buffer.from(buffer);

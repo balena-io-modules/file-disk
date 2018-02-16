@@ -283,7 +283,7 @@ class Disk {
 					self._read(buffer, offset, length, entry[0], function(err) {
 						if (err) {
 							if (!failed) {
-								callback(err.errno);
+								callback(err);
 								failed = true;
 							}
 						} else {

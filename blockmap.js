@@ -36,13 +36,11 @@ function mergeBlocks(blocks) {
 
 function streamSha256(stream, callback) {
 	const hash = crypto.createHash('sha256');
-	hash.setEncoding('hex');
-	stream.pipe(hash);
 	stream.on('error', callback);
-	stream.on('end', function() {
-		hash.end();
-		callback(null, hash.read());
+	hash.on('finish', function() {
+		callback(null, hash.read().toString('hex'));
 	});
+	stream.pipe(hash);
 }
 
 function getRanges(disk, blocks, blockSize, calculateChecksums, callback) {

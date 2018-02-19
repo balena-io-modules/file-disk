@@ -261,51 +261,33 @@ class Disk {
 	}
 
 	_readAccordingToPlan(buffer, plan, callback) {
-		const self = this;
-		let chunksLeft = plan.length;
+		const readAsync = Promise.promisify(this._read, { context: this });
 		let offset = 0;
-		let failed = false;
-		function done() {
-			if (!failed && (chunksLeft === 0)) {
-				callback(null, offset, buffer);
-			}
-		}
-		for (let entry of plan) {
+		Promise.each(plan, (entry) => {
 			if (entry instanceof diskchunk.DiskChunk) {
 				const data = entry.data();
 				const length = Math.min(data.length, buffer.length - offset);
 				data.copy(buffer, offset, 0, length);
 				offset += length;
-				chunksLeft--;
 			} else {
 				const length = entry[1] - entry[0] + 1;
-				(function(entry, offset, length) {
-					self._read(buffer, offset, length, entry[0], function(err) {
-						if (err) {
-							if (!failed) {
-								callback(err);
-								failed = true;
-							}
-						} else {
-							if (self.recordReads) {
-								const slice = Buffer.from(
-									buffer.slice(offset, offset + length)
-								);
-								const chunk = new diskchunk.BufferDiskChunk(
-									slice,
-									entry[0]
-								);
-								self._insertDiskChunk(chunk);
-							}
-							chunksLeft--;
-							done();
-						}
-					});
-				})(entry, offset, length);
-				offset += length;
+				return readAsync(buffer, offset, length, entry[0])
+				.then(() => {
+					if (this.recordReads) {
+						const chunk = new diskchunk.BufferDiskChunk(
+							Buffer.from(buffer.slice(offset, offset + length)),
+							entry[0]
+						);
+						this._insertDiskChunk(chunk);
+					}
+					offset += length;
+				});
 			}
-		}
-		done();
+		})
+		.then(() => {
+			callback(null, offset, buffer);
+		})
+		.catch(callback);
 	}
 }
 

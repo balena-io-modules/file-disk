@@ -4,7 +4,7 @@ const BlockMap = require('blockmap');
 const Promise = require('bluebird');
 const crypto = require('crypto');
 
-function getNotDiscardedChunks(disk, capacity) {
+const getNotDiscardedChunks = (disk, capacity) => {
 	const chunks = [];
 	const discardedChunks = disk.getDiscardedChunks();
 	let lastStart = 0;
@@ -16,7 +16,7 @@ function getNotDiscardedChunks(disk, capacity) {
 		chunks.push([lastStart, capacity - 1]);
 	}
 	return chunks;
-}
+};
 
 function* mergeBlocks(blocks) {
 	// Merges adjacent and overlapping blocks (helper for getBlockMap).
@@ -38,19 +38,19 @@ function* mergeBlocks(blocks) {
 	}
 }
 
-function streamSha256(stream) {
+const streamSha256 = (stream) => {
 	const hash = crypto.createHash('sha256');
 	return new Promise((resolve, reject) => {
 		stream.on('error', reject);
 		hash.on('error', reject);
-		hash.on('finish', function() {
+		hash.on('finish', () => {
 			resolve(hash.read().toString('hex'));
 		});
 		stream.pipe(hash);
 	});
-}
+};
 
-function getRanges(disk, blocks, blockSize, calculateChecksums) {
+const getRanges = (disk, blocks, blockSize, calculateChecksums) => {
 	const getStreamAsync = Promise.promisify(disk.getStream, { context: disk });
 	const result = blocks.map((block) => {
 		return { start: block[0], end: block[1], checksum: null };
@@ -70,26 +70,26 @@ function getRanges(disk, blocks, blockSize, calculateChecksums) {
 		});
 	})
 	.return(result);
-}
+};
 
-function calculateBmapSha256(bmap){
+const calculateBmapSha256 = (bmap) => {
 	bmap.checksum = Array(64).join('0');
 	const hash = crypto.createHash('sha256');
 	hash.update(bmap.toString());
 	bmap.checksum = hash.digest('hex');
-}
+};
 
-exports.getBlockMap = function(disk, blockSize, capacity, calculateChecksums, callback) {
+exports.getBlockMap = (disk, blockSize, capacity, calculateChecksums, callback) => {
 	const chunks = getNotDiscardedChunks(disk, capacity);
-	let blocks = chunks.map(function(chunk) {
-		return chunk.map(function(pos) {
+	let blocks = chunks.map((chunk) => {
+		return chunk.map((pos) => {
 			return Math.floor(pos / blockSize);
 		});
 	});
 	blocks = Array.from(mergeBlocks(blocks));
-	const mappedBlockCount = blocks.map(function(block) {
+	const mappedBlockCount = blocks.map((block) => {
 		return block[1] - block[0] + 1;
-	}).reduce(function(a, b) {
+	}).reduce((a, b) => {
 		return a + b;
 	});
 	getRanges(disk, blocks, blockSize, calculateChecksums)

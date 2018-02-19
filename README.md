@@ -83,22 +83,22 @@ For more information about S3Disk parameters see
 const Promise = require('bluebird');
 const filedisk = Promise.promisifyAll(require('file-disk'), { multiArgs: true });
 
-Promise.using(filedisk.openFile('/path/to/some/file', 'r+'), function(fd) {
+Promise.using(filedisk.openFile('/path/to/some/file', 'r+'), (fd) => {
 	const disk = new filedisk.FileDisk(fd)
 
 	// get file size
 	return disk.getCapacityAsync()
-	.spread(function(size) {
+	.spread((size) => {
 		console.log("size:", size);
 		const buf = Buffer.alloc(1024);
 		// read `buf.length` bytes starting at 0 from the file into `buf`
 		return disk.readAsync(buf, 0, buf.length, 0);
 	})
-	.spread(function(bytesRead, buf) {
+	.spread((bytesRead, buf) => {
 		// write `buf` into file starting at `buf.length` (in the file)
 		return disk.writeAsync(buf, 0, buf.length, buf.length);
 	})
-	.spread(function(bytesWritten) {
+	.spread((bytesWritten) => {
 		// flush
 		return disk.flushAsync();
 	});
@@ -116,30 +116,30 @@ const filedisk = Promise.promisifyAll(require('file-disk'), { multiArgs: true })
 
 const buf = Buffer.alloc(1024);
 
-Promise.using(filedisk.openFile('/path/to/some/file', 'r'), function(fd) {
+Promise.using(filedisk.openFile('/path/to/some/file', 'r'), (fd) => {
 	const disk = new filedisk.FileDisk(fd, true, true);
 
 	// read `buf.length` bytes starting at 0 from the file into `buf`
 	return disk.readAsync(buf, 0, buf.length, 0);
-	.spread(function(bytesRead, buf) {
+	.spread((bytesRead, buf) => {
 		// write `buf` into file starting at `buf.length` (in the file)
 		return disk.writeAsync(buf, 0, buf.length, buf.length);
 	})
-	.spread(function(bytesWritten) {
+	.spread((bytesWritten) => {
 		const buf2 = Buffer.alloc(1024);
 		// read what we've just written
 		return disk.readAsync(buf2, 0, buf.length, 0);
 	});
-	.spread(function(bytesRead, buf2) {
+	.spread((bytesRead, buf2) => {
 		// writes are stored in memory
 		assert(buf.equals(buf2));
 	})
-	.then(function() {
+	.then(() => {
 		return disk.getStreamAsync();
 	})
-	.spread(function(stream) {
+	.spread((stream) => {
 		// pipe the stream somewhere
-		return new Promise(function(resolve, reject) {
+		return new Promise((resolve, reject) => {
 			stream.pipe(someWritableStream)
 			.on('close', resolve)
 			.on('error', reject);

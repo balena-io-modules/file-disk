@@ -20,45 +20,44 @@ class DiskStream extends Readable {
 	}
 
 	_read() {
-		const self = this;
 		const length = Math.min(
-			self._readableState.highWaterMark,
-			self.capacity - self.position
+			this._readableState.highWaterMark,
+			this.capacity - this.position
 		);
 		if (length <= 0) {
-			self.push(null);
+			this.push(null);
 			return;
 		}
 		const buffer = Buffer.allocUnsafe(length);
-		self.disk.read(
+		this.disk.read(
 			buffer,
 			0,  // buffer offset
 			length,
-			self.position,  // disk offset
-			function(err, bytesRead, buf) {
+			this.position,  // disk offset
+			(err, bytesRead, buf) => {
 				if (err) {
-					self.emit('error', err);
+					this.emit('error', err);
 					return;
 				}
-				self.position += length;
-				self.push(buf);
+				this.position += length;
+				this.push(buf);
 			}
 		);
 	}
 }
 
-function openFile(path, flags, mode) {
+const openFile = (path, flags, mode) => {
 	// Opens a file and closes it when you're done using it.
 	// Arguments are the same that for `fs.open()`
 	// Use it with Bluebird's `using`, example:
-	// Promise.using(openFile('/some/path', 'r+'), function(fd) {
+	// Promise.using(openFile('/some/path', 'r+'), (fd) => {
 	//   doSomething(fd);
 	// });
 	return fs.openAsync(path, flags, mode)
-	.disposer(function(fd) {
+	.disposer((fd) => {
 		return fs.closeAsync(fd);
 	});
-}
+};
 
 class Disk {
 	// Subclasses need to implement:
@@ -136,13 +135,12 @@ class Disk {
 			callback(null, this.capacity);
 			return;
 		}
-		const self = this;
-		this._getCapacity(function(err, capacity) {
+		this._getCapacity((err, capacity) => {
 			if (err) {
 				callback(err);
 				return;
 			}
-			self.capacity = capacity;
+			this.capacity = capacity;
 			callback(null, capacity);
 		});
 	}
@@ -155,8 +153,7 @@ class Disk {
 		if (!Number.isInteger(highWaterMark)) {
 			highWaterMark = DEFAULT_HIGH_WATER_MARK;
 		}
-		const self = this;
-		self.getCapacity(function(err, end) {
+		this.getCapacity((err, end) => {
 			if (err) {
 				callback(err);
 				return;
@@ -164,24 +161,23 @@ class Disk {
 			if (Number.isInteger(length)) {
 				end = Math.min(position + length, end);
 			}
-			callback(null, new DiskStream(self, end, highWaterMark, position));
+			callback(null, new DiskStream(this, end, highWaterMark, position));
 		});
 	}
 
 	getDiscardedChunks() {
-		return this.knownChunks.filter(function(chunk) {
+		return this.knownChunks.filter((chunk) => {
 			return (chunk instanceof diskchunk.DiscardDiskChunk);
 		});
 	}
 
 	getBlockMap(blockSize, calculateChecksums, callback) {
-		const self = this;
-		this.getCapacity(function(err, capacity) {
+		this.getCapacity((err, capacity) => {
 			if (err) {
 				callback(err);
 				return;
 			}
-			blockmap.getBlockMap(self, blockSize, capacity, calculateChecksums, callback);
+			blockmap.getBlockMap(this, blockSize, capacity, calculateChecksums, callback);
 		});
 	}
 
@@ -223,14 +219,14 @@ class Disk {
 		const interval = [offset, end];
 		let chunks = this.knownChunks;
 		if (!this.discardIsZero) {
-			chunks = chunks.filter(function(chunk) {
+			chunks = chunks.filter((chunk) => {
 				return !(chunk instanceof diskchunk.DiscardDiskChunk);
 			});
 		}
-		const intersections = chunks.map(function(chunk) {
+		const intersections = chunks.map((chunk) => {
 			const inter = iisect(interval, chunk.interval());
 			return (inter !== null) ? chunk.slice(inter[0], inter[1]) : null;
-		}).filter(function(chunk) {
+		}).filter((chunk) => {
 			return (chunk !== null);
 		});
 		if (intersections.length === 0) {
@@ -289,7 +285,7 @@ class FileDisk extends Disk {
 	}
 
 	_getCapacity(callback) {
-		fs.fstat(this.fd, function (err, stat) {
+		fs.fstat(this.fd, (err, stat) => {
 			if (err) {
 				callback(err);
 				return;
@@ -325,7 +321,7 @@ class S3Disk extends Disk {
 	}
 
 	_getCapacity(callback) {
-		this.s3.headObject(this._getS3Params(), function(err, data) {
+		this.s3.headObject(this._getS3Params(), (err, data) => {
 			if (err) {
 				callback(err);
 				return;
@@ -337,7 +333,7 @@ class S3Disk extends Disk {
 	_read(buffer, bufferOffset, length, fileOffset, callback) {
 		const params = this._getS3Params();
 		params.Range = `bytes=${fileOffset}-${fileOffset + length - 1}`;
-		this.s3.getObject(params, function(err, data) {
+		this.s3.getObject(params, (err, data) => {
 			if (err) {
 				callback(err);
 				return;

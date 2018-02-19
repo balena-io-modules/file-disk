@@ -1,6 +1,7 @@
 'use strict';
 
 const BlockMap = require('blockmap');
+const Promise = require('bluebird');
 const crypto = require('crypto');
 
 function getNotDiscardedChunks(disk, blockSize, capacity) {
@@ -34,58 +35,37 @@ function mergeBlocks(blocks) {
 	}
 }
 
-function streamSha256(stream, callback) {
+function streamSha256(stream) {
 	const hash = crypto.createHash('sha256');
-	stream.on('error', callback);
-	hash.on('finish', function() {
-		callback(null, hash.read().toString('hex'));
+	return new Promise((resolve, reject) => {
+		stream.on('error', reject);
+		hash.on('finish', function() {
+			resolve(hash.read().toString('hex'));
+		});
+		stream.pipe(hash);
 	});
-	stream.pipe(hash);
 }
 
-function getRanges(disk, blocks, blockSize, calculateChecksums, callback) {
+function getRanges(disk, blocks, blockSize, calculateChecksums) {
+	const getStreamAsync = Promise.promisify(disk.getStream, { context: disk });
 	const result = blocks.map((block) => {
 		return { start: block[0], end: block[1], checksum: null };
 	});
 	if (!calculateChecksums) {
-		callback(null, result);
-		return;
+		return Promise.resolve(result);
 	}
-	let wait = blocks.length;
-	let block, i, start, length;
-	let error = false;
-	for (i = 0; i < blocks.length; i++) {
-		block = blocks[i];
-		start  = block[0] * blockSize;
-		length = (block[1] - block[0] + 1) * blockSize;
-		(function(i, start, length) {
-			disk.getStream(start, length, function(err, stream) {
-				if (err) {
-					if (!error) {
-						error = true;
-						callback(err);
-					}
-					wait -= 1;
-					return;
-				}
-				streamSha256(stream, function(err, hex) {
-					if (err) {
-						if (!error) {
-							error = true;
-							callback(err);
-						}
-						wait -= 1;
-						return;
-					}
-					result[i].checksum = hex;
-					wait -= 1;
-					if (wait === 0) {
-						callback(null, result);
-					}
-				});
+	return Promise.each(blocks, (block, i) => {
+		const start  = block[0] * blockSize;
+		const length = (block[1] - block[0] + 1) * blockSize;
+		return getStreamAsync(start, length)
+		.then((stream) => {
+			return streamSha256(stream)
+			.then((hex) => {
+				result[i].checksum = hex;
 			});
-		})(i, start, length);
-	}
+		});
+	})
+	.return(result);
 }
 
 function calculateBmapSha256(bmap){
@@ -108,11 +88,8 @@ exports.getBlockMap = function(disk, blockSize, capacity, calculateChecksums, ca
 	}).reduce(function(a, b) {
 		return a + b;
 	});
-	getRanges(disk, blocks, blockSize, calculateChecksums, function(err, ranges) {
-		if (err) {
-			callback(err);
-			return;
-		}
+	getRanges(disk, blocks, blockSize, calculateChecksums)
+	.then((ranges) => {
 		const bmap = new BlockMap({
 			imageSize: capacity,
 			blockSize: blockSize,
@@ -122,5 +99,6 @@ exports.getBlockMap = function(disk, blockSize, capacity, calculateChecksums, ca
 		});
 		calculateBmapSha256(bmap);
 		callback(null, bmap);
-	});
+	})
+	.catch(callback);
 };

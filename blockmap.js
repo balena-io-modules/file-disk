@@ -4,7 +4,7 @@ const BlockMap = require('blockmap');
 const Promise = require('bluebird');
 const crypto = require('crypto');
 
-function getNotDiscardedChunks(disk, blockSize, capacity) {
+function getNotDiscardedChunks(disk, capacity) {
 	const chunks = [];
 	const discardedChunks = disk.getDiscardedChunks();
 	let lastStart = 0;
@@ -18,20 +18,23 @@ function getNotDiscardedChunks(disk, blockSize, capacity) {
 	return chunks;
 }
 
-function mergeBlocks(blocks) {
-	// Merges adjacent blocks in place (helper for getBlockMap).
-	if (blocks.length > 1) {
-		let last = blocks[0];
-		for (let i = 1; i < blocks.length; i++) {
-			let block = blocks[i];
-			if ((block[0] >= last[0]) && (block[0] <= last[1] + 1)) {
-				last[1] = block[1];
-				blocks.splice(i, 1);
-				i--;
-			} else {
-				last = block;
-			}
+function* mergeBlocks(blocks) {
+	// Merges adjacent and overlapping blocks (helper for getBlockMap).
+	let current;
+	for (let block of blocks) {
+		if (current === undefined) {
+			current = block.slice();  // slice for copying
+		} else if (block[0] > current[1] + 1) {
+			// There's a gap
+			yield current;
+			current = block.slice();  // slice for copying
+		} else {
+			// No gap
+			current[1] = block[1];
 		}
+	}
+	if (current !== undefined) {
+		yield current;
 	}
 }
 
@@ -76,13 +79,13 @@ function calculateBmapSha256(bmap){
 }
 
 exports.getBlockMap = function(disk, blockSize, capacity, calculateChecksums, callback) {
-	const chunks = getNotDiscardedChunks(disk, blockSize, capacity);
-	const blocks = chunks.map(function(chunk) {
+	const chunks = getNotDiscardedChunks(disk, capacity);
+	let blocks = chunks.map(function(chunk) {
 		return chunk.map(function(pos) {
 			return Math.floor(pos / blockSize);
 		});
 	});
-	mergeBlocks(blocks);
+	blocks = Array.from(mergeBlocks(blocks));
 	const mappedBlockCount = blocks.map(function(block) {
 		return block[1] - block[0] + 1;
 	}).reduce(function(a, b) {

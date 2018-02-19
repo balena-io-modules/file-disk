@@ -17,12 +17,12 @@
   "devDependencies": {
     "aws-sdk": "2.39.0",
     "eslint": "^3.19.0",
-    "mocha": "2.2.5",
-    "stream-to-array": "2.3.0"
+    "mocha": "^2.2.5",
+    "stream-to-array": "^2.3.0"
   },
   "dependencies": {
     "blockmap": "^2.0.2",
-    "bluebird": "3.5.0",
-    "interval-intersection": "1.0.0"
+    "bluebird": "^3.5.1",
+    "interval-intersection": "^1.0.0"
   }
 }

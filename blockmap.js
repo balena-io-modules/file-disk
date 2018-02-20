@@ -42,6 +42,7 @@ function streamSha256(stream) {
 	const hash = crypto.createHash('sha256');
 	return new Promise((resolve, reject) => {
 		stream.on('error', reject);
+		hash.on('error', reject);
 		hash.on('finish', function() {
 			resolve(hash.read().toString('hex'));
 		});

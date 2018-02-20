@@ -62,7 +62,7 @@ class DiskChunk {
 }
 
 /*
-`BufferDiskChunk` is a `DiskChunk` baked by a `Buffer`
+`BufferDiskChunk` is a `DiskChunk` backed by a `Buffer`
 */
 class BufferDiskChunk extends DiskChunk {
 	constructor(buffer, offset, copy=true) {

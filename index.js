@@ -2,11 +2,11 @@
 
 const Promise = require('bluebird');
 const Readable = require('stream').Readable;
-const fs = Promise.promisifyAll(require('fs'));
 const iisect = require('interval-intersection');
 
 const blockmap = require('./blockmap');
 const diskchunk = require('./diskchunk');
+const fs = require('./fs');
 
 const MIN_HIGH_WATER_MARK = 16;
 const DEFAULT_HIGH_WATER_MARK = 16384;
@@ -19,30 +19,27 @@ class DiskStream extends Readable {
 		this.position = start;
 	}
 
-	_read() {
-		const length = Math.min(
-			this._readableState.highWaterMark,
-			this.capacity - this.position
-		);
+	_read(size) {
+		const length = Math.min(size, this.capacity - this.position);
 		if (length <= 0) {
 			this.push(null);
 			return;
 		}
-		const buffer = Buffer.allocUnsafe(length);
 		this.disk.read(
-			buffer,
+			Buffer.allocUnsafe(length),
 			0,  // buffer offset
 			length,
-			this.position,  // disk offset
-			(err, bytesRead, buf) => {
-				if (err) {
-					this.emit('error', err);
-					return;
-				}
-				this.position += length;
-				this.push(buf);
+			this.position  // disk offset
+		)
+		.then(({ bytesRead, buffer }) => {
+			this.position += bytesRead;
+			if (this.push(buffer)) {
+				this._read(size);
 			}
-		);
+		})
+		.catch((err) => {
+			this.emit('error', err);
+		});
 	}
 }
 
@@ -53,31 +50,30 @@ const openFile = (path, flags, mode) => {
 	// Promise.using(openFile('/some/path', 'r+'), (fd) => {
 	//   doSomething(fd);
 	// });
-	return fs.openAsync(path, flags, mode)
+	return fs.open(path, flags, mode)
 	.disposer((fd) => {
-		return fs.closeAsync(fd);
+		return fs.close(fd);
 	});
 };
 
 class Disk {
 	// Subclasses need to implement:
-	// * _getCapacity(callback)
-	// * _read(buffer, bufferOffset, length, fileOffset, callback(err, bytesRead, buffer))
-	// * _write(buffer, bufferOffset, length, fileOffset, callback(err, bytesWritten)) [only for writable disks]
-	// * _flush(callback(err)) [only for writable disks]
-	// * _discard(offset, length, callback(err)) [only for writable disks]
+	// * _getCapacity(): Promise<Number>
+	// * _read(buffer, bufferOffset, length, fileOffset): Promise<{ bytesRead: Number, buffer: Buffer }>
+	// * _write(buffer, bufferOffset, length, fileOffset): Promise<{ bytesWritten: Number, buffer: Buffer }> [only for writable disks]
+	// * _flush(): Promise<undefined> [only for writable disks]
+	// * _discard(offset, length): Promise<undefined> [only for writable disks]
 	//
 	// Users of instances of subclasses can use:
-	// * getCapacity(callback(err, size))
-	// * read(buffer, bufferOffset, length, fileOffset, callback(err, bytesRead, buffer))
-	// * write(buffer, bufferOffset, length, fileOffset, callback(err, bytesWritten))
-	// * flush(callback(err))
-	// * discard(offset, length, callback(err))
-	// * getStream([position, [length, [highWaterMark]]], callback(err, stream))
+	// * getCapacity(): Promise<Number>
+	// * read(buffer, bufferOffset, length, fileOffset): Promise<{ bytesRead: Number, buffer: Buffer }>
+	// * write(buffer, bufferOffset, length, fileOffset): Promise<{ bytesWritten: Number, buffer: Buffer }>
+	// * flush(): Promise<undefined>
+	// * discard(offset, length): Promise<undefined>
+	// * getStream([position, [length, [highWaterMark]]]): Promise<stream.Readable>
 	//   * position: start reading from this offset (defaults to zero)
 	//   * length: read that amount of bytes (defaults to (disk capacity - position))
 	//   * highWaterMark: size of chunks that will be read (default 16384, minimum 16)
-	//   * `stream` will be a readable stream of the disk
 	constructor(readOnly, recordWrites, recordReads, discardIsZero) {
 		discardIsZero = (discardIsZero === undefined) ? true : discardIsZero;
 		this.readOnly = readOnly;
@@ -88,12 +84,12 @@ class Disk {
 		this.capacity = null;
 	}
 
-	read(buffer, bufferOffset, length, fileOffset, callback) {
+	read(buffer, bufferOffset, length, fileOffset) {
 		const plan = this._createReadPlan(fileOffset, length);
-		this._readAccordingToPlan(buffer, plan, callback);
+		return this._readAccordingToPlan(buffer, plan);
 	}
 
-	write(buffer, bufferOffset, length, fileOffset, callback) {
+	write(buffer, bufferOffset, length, fileOffset) {
 		if (this.recordWrites) {
 			const chunk = new diskchunk.BufferDiskChunk(
 				buffer.slice(bufferOffset, bufferOffset + length),
@@ -111,57 +107,43 @@ class Disk {
 			this._insertDiskChunk(chunk, false);
 		}
 		if (this.readOnly) {
-			callback(null, length, buffer);
+			return Promise.resolve({ bytesWritten: length, buffer });
 		} else {
-			this._write(buffer, bufferOffset, length, fileOffset, callback);
+			return this._write(buffer, bufferOffset, length, fileOffset);
 		}
 	}
 
-	flush(callback) {
+	flush() {
 		if (this.readOnly) {
-			callback(null);
+			return Promise.resolve();
 		} else {
-			this._flush(callback);
+			return this._flush();
 		}
 	}
 	
-	discard(offset, length, callback) {
+	discard(offset, length) {
 		this._insertDiskChunk(new diskchunk.DiscardDiskChunk(offset, length));
-		callback(null);
+		return Promise.resolve();
 	}
 
-	getCapacity(callback) {
+	getCapacity() {
 		if (this.capacity !== null) {
-			callback(null, this.capacity);
-			return;
+			return Promise.resolve(this.capacity);
 		}
-		this._getCapacity((err, capacity) => {
-			if (err) {
-				callback(err);
-				return;
-			}
+		return this._getCapacity()
+		.then((capacity) => {
 			this.capacity = capacity;
-			callback(null, capacity);
+			return capacity;
 		});
 	}
 
-	getStream(...argv) {
-		// args: ([position, [length, [highWaterMark]]], callback)
-		const callback = argv.pop();
-		let [ position, length, highWaterMark ] = argv;
-		position = Number.isInteger(position) ? position : 0;
-		if (!Number.isInteger(highWaterMark)) {
-			highWaterMark = DEFAULT_HIGH_WATER_MARK;
-		}
-		this.getCapacity((err, end) => {
-			if (err) {
-				callback(err);
-				return;
-			}
+	getStream(position=0, length=null, highWaterMark=DEFAULT_HIGH_WATER_MARK) {
+		return this.getCapacity()
+		.then((end) => {
 			if (Number.isInteger(length)) {
 				end = Math.min(position + length, end);
 			}
-			callback(null, new DiskStream(this, end, highWaterMark, position));
+			return new DiskStream(this, end, highWaterMark, position);
 		});
 	}
 
@@ -171,13 +153,10 @@ class Disk {
 		});
 	}
 
-	getBlockMap(blockSize, calculateChecksums, callback) {
-		this.getCapacity((err, capacity) => {
-			if (err) {
-				callback(err);
-				return;
-			}
-			blockmap.getBlockMap(this, blockSize, capacity, calculateChecksums, callback);
+	getBlockMap(blockSize, calculateChecksums) {
+		return this.getCapacity()
+		.then((capacity) => {
+			return blockmap.getBlockMap(this, blockSize, capacity, calculateChecksums);
 		});
 	}
 
@@ -247,10 +226,9 @@ class Disk {
 		return readPlan;
 	}
 
-	_readAccordingToPlan(buffer, plan, callback) {
-		const readAsync = Promise.promisify(this._read, { context: this });
+	_readAccordingToPlan(buffer, plan) {
 		let offset = 0;
-		Promise.each(plan, (entry) => {
+		return Promise.each(plan, (entry) => {
 			if (entry instanceof diskchunk.DiskChunk) {
 				const data = entry.data();
 				const length = Math.min(data.length, buffer.length - offset);
@@ -258,7 +236,7 @@ class Disk {
 				offset += length;
 			} else {
 				const length = entry[1] - entry[0] + 1;
-				return readAsync(buffer, offset, length, entry[0])
+				return this._read(buffer, offset, length, entry[0])
 				.then(() => {
 					if (this.recordReads) {
 						const chunk = new diskchunk.BufferDiskChunk(
@@ -271,10 +249,9 @@ class Disk {
 				});
 			}
 		})
-		.then(() => {
-			callback(null, offset, buffer);
-		})
-		.catch(callback);
+		.then(() => {  // Using .return() here wouldn't work because offset would be 0
+			return { bytesRead: offset, buffer };
+		});
 	}
 }
 
@@ -284,26 +261,20 @@ class FileDisk extends Disk {
 		this.fd = fd;
 	}
 
-	_getCapacity(callback) {
-		fs.fstat(this.fd, (err, stat) => {
-			if (err) {
-				callback(err);
-				return;
-			}
-			callback(null, stat.size);
-		});
+	_getCapacity() {
+		return fs.fstat(this.fd).get('size');
 	}
 
-	_read(buffer, bufferOffset, length, fileOffset, callback) {
-		fs.read(this.fd, buffer, bufferOffset, length, fileOffset, callback);
+	_read(buffer, bufferOffset, length, fileOffset) {
+		return fs.read(this.fd, buffer, bufferOffset, length, fileOffset);
 	}
 
-	_write(buffer, bufferOffset, length, fileOffset, callback) {
-		fs.write(this.fd, buffer, bufferOffset, length, fileOffset, callback);
+	_write(buffer, bufferOffset, length, fileOffset) {
+		return fs.write(this.fd, buffer, bufferOffset, length, fileOffset);
 	}
 
-	_flush(callback) {
-		fs.fdatasync(this.fd, callback);
+	_flush() {
+		return fs.fdatasync(this.fd);
 	}
 }
 
@@ -320,26 +291,17 @@ class S3Disk extends Disk {
 		return { Bucket: this.bucket, Key: this.key };
 	}
 
-	_getCapacity(callback) {
-		this.s3.headObject(this._getS3Params(), (err, data) => {
-			if (err) {
-				callback(err);
-				return;
-			}
-			callback(null, data.ContentLength);
-		});
+	_getCapacity() {
+		return this.s3.headObject(this._getS3Params()).promise().get('ContentLength');
 	}
 
-	_read(buffer, bufferOffset, length, fileOffset, callback) {
+	_read(buffer, bufferOffset, length, fileOffset) {
 		const params = this._getS3Params();
 		params.Range = `bytes=${fileOffset}-${fileOffset + length - 1}`;
-		this.s3.getObject(params, (err, data) => {
-			if (err) {
-				callback(err);
-				return;
-			}
+		return this.s3.getObject(params).promise()
+		.then((data) => {
 			data.Body.copy(buffer, bufferOffset);
-			callback(null, data.ContentLength, buffer);
+			return { bytesRead: data.contentLength, buffer };
 		});
 	}
 }
@@ -349,12 +311,12 @@ class DiskWrapper {
 		this.disk = disk;
 	}
 
-	getCapacity(callback) {
-		this.disk.getCapacity(callback);
+	getCapacity() {
+		return this.disk.getCapacity();
 	}
 
-	getStream(highWaterMark, callback) {
-		this.disk.getStream(highWaterMark, callback);
+	getStream(highWaterMark) {
+		return this.disk.getStream(highWaterMark);
 	}
 }
 

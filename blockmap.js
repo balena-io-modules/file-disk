@@ -51,7 +51,6 @@ const streamSha256 = (stream) => {
 };
 
 const getRanges = (disk, blocks, blockSize, calculateChecksums) => {
-	const getStreamAsync = Promise.promisify(disk.getStream, { context: disk });
 	const result = blocks.map((block) => {
 		return { start: block[0], end: block[1], checksum: null };
 	});
@@ -61,7 +60,7 @@ const getRanges = (disk, blocks, blockSize, calculateChecksums) => {
 	return Promise.each(blocks, (block, i) => {
 		const start  = block[0] * blockSize;
 		const length = (block[1] - block[0] + 1) * blockSize;
-		return getStreamAsync(start, length)
+		return disk.getStream(start, length)
 		.then((stream) => {
 			return streamSha256(stream)
 			.then((hex) => {
@@ -79,7 +78,7 @@ const calculateBmapSha256 = (bmap) => {
 	bmap.checksum = hash.digest('hex');
 };
 
-exports.getBlockMap = (disk, blockSize, capacity, calculateChecksums, callback) => {
+exports.getBlockMap = (disk, blockSize, capacity, calculateChecksums) => {
 	const chunks = getNotDiscardedChunks(disk, capacity);
 	let blocks = chunks.map((chunk) => {
 		return chunk.map((pos) => {
@@ -92,7 +91,7 @@ exports.getBlockMap = (disk, blockSize, capacity, calculateChecksums, callback) 
 	}).reduce((a, b) => {
 		return a + b;
 	});
-	getRanges(disk, blocks, blockSize, calculateChecksums)
+	return getRanges(disk, blocks, blockSize, calculateChecksums)
 	.then((ranges) => {
 		const bmap = new BlockMap({
 			imageSize: capacity,
@@ -102,7 +101,6 @@ exports.getBlockMap = (disk, blockSize, capacity, calculateChecksums, callback) 
 			ranges: ranges
 		});
 		calculateBmapSha256(bmap);
-		callback(null, bmap);
-	})
-	.catch(callback);
+		return bmap;
+	});
 };

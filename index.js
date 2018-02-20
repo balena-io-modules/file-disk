@@ -147,19 +147,10 @@ class Disk {
 		});
 	}
 
-	getStream() {
+	getStream(...argv) {
 		// args: ([position, [length, [highWaterMark]]], callback)
-		const callback = arguments[arguments.length - 1];
-		let position, length, highWaterMark;
-		if (arguments.length >= 2) {
-			position = arguments[0];
-		}
-		if (arguments.length >= 3) {
-			length = arguments[1];
-		}
-		if (arguments.length >= 4) {
-			highWaterMark = arguments[2];
-		}
+		const callback = argv.pop();
+		let [ position, length, highWaterMark ] = argv;
 		position = Number.isInteger(position) ? position : 0;
 		if (!Number.isInteger(highWaterMark)) {
 			highWaterMark = DEFAULT_HIGH_WATER_MARK;

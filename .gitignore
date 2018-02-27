@@ -1,2 +1,5 @@
 node_modules
 minio_container_id
+build
+*.swp
+test/.minio.sys

@@ -1,21 +1,13 @@
-/*global it describe beforeEach afterEach*/
-/*eslint no-undef: "error"*/
+import * as assert from 'assert';
+import * as aws from 'aws-sdk';
+import * as Promise from 'bluebird';
+import { createHash } from 'crypto';
+import * as fs from 'fs';
+import { afterEach, beforeEach, describe } from 'mocha';
+import * as path from 'path';
 
-'use strict';
-
-const Promise = require('bluebird');
-const fs = require('fs');
-const path = require('path');
-const assert = require('assert');
-const aws = require('aws-sdk');
-const crypto = require('crypto');
-const streamToArrayAsync = Promise.promisifyAll(require('stream-to-array'));
-
-// We need aws to return bluebird promises, see S3Disk._getCapacity().
-aws.config.setPromisesDependency(Promise);
-
-const filedisk = require('../');
-const diskchunk = require('../diskchunk');
+import { FileDisk, openFile, S3Disk } from '../src';
+import { BufferDiskChunk } from '../src/diskchunk';
 
 const BUCKET_NAME = 'fixtures';
 const FILE_NAME = 'zeros';
@@ -27,11 +19,22 @@ const S3 = new aws.S3({
 	secretAccessKey: 'secret_key',
 	endpoint: 'http://0.0.0.0:9042',
 	s3ForcePathStyle: true,
-	sslEnabled: false
+	sslEnabled: false,
 });
 
+const streamToBuffer = (stream) => {
+	return new Promise((resolve, reject) => {
+		const chunks = [];
+		stream.on('error', reject);
+		stream.on('data', chunks.push.bind(chunks));
+		stream.on('end', () => {
+			resolve(Buffer.concat(chunks));
+		});
+	});
+};
+
 const sha256 = (buffer) => {
-	const hash = crypto.createHash('sha256');
+	const hash = createHash('sha256');
 	hash.update(buffer);
 	return hash.digest('hex');
 };
@@ -41,7 +44,7 @@ const createDisk = (fd) => {
 	// don't record reads
 	// don't record writes
 	// discarded chunks are zeros
-	return new filedisk.FileDisk(fd);
+	return new FileDisk(fd);
 };
 
 const createCowDisk = (fd) => {
@@ -49,7 +52,7 @@ const createCowDisk = (fd) => {
 	// record writes
 	// record reads
 	// discarded chunks are zeros
-	return new filedisk.FileDisk(fd, true, true, true, true);
+	return new FileDisk(fd, true, true, true, true);
 };
 
 const createCowDisk2 = (fd) => {
@@ -57,7 +60,7 @@ const createCowDisk2 = (fd) => {
 	// record writes
 	// don't record reads
 	// read discarded chunks from the disk anyway
-	return new filedisk.FileDisk(fd, true, true, false, false);
+	return new FileDisk(fd, true, true, false, false);
 };
 
 const createS3CowDisk = () => {
@@ -65,20 +68,20 @@ const createS3CowDisk = () => {
 	// record reads
 	// record writes
 	// discarded chunks are zeros
-	return new filedisk.S3Disk(S3, BUCKET_NAME, FILE_NAME, true, true);
+	return new S3Disk(S3, BUCKET_NAME, FILE_NAME, true, true);
 };
 
 const testOnAllDisks = (fn) => {
 	const files = [
-		filedisk.openFile(DISK_PATH, 'r'),
-		filedisk.openFile(TMP_DISK_PATH, 'r+')
+		openFile(DISK_PATH, 'r'),
+		openFile(TMP_DISK_PATH, 'r+'),
 	];
 	return Promise.using(files, (fds) => {
 		const disks = [
 			createCowDisk(fds[0]),
 			createCowDisk2(fds[0]),
 			createDisk(fds[1]),
-			createS3CowDisk()
+			createS3CowDisk(),
 		];
 		return Promise.all(disks.map(fn));
 	});
@@ -87,7 +90,7 @@ const testOnAllDisks = (fn) => {
 describe('BufferDiskChunk', () => {
 	describe('slice', () => {
 		it('0-3, slice 0-2', () => {
-			const chunk = new diskchunk.BufferDiskChunk(Buffer.alloc(4), 0);
+			const chunk = new BufferDiskChunk(Buffer.alloc(4), 0);
 			const slice = chunk.slice(0, 2);
 			assert.strictEqual(slice.start, 0);
 			assert.strictEqual(slice.end, 2);
@@ -95,7 +98,7 @@ describe('BufferDiskChunk', () => {
 		});
 
 		it('4-7, slice 5-6', () => {
-			const chunk = new diskchunk.BufferDiskChunk(Buffer.alloc(4), 4);
+			const chunk = new BufferDiskChunk(Buffer.alloc(4), 4);
 			const slice = chunk.slice(5, 6);
 			assert.strictEqual(slice.start, 5);
 			assert.strictEqual(slice.end, 6);
@@ -244,39 +247,39 @@ describe('file-disk', () => {
 			return disk.getStream();
 		})
 		.then((stream) => {
-			return streamToArrayAsync(stream);
+			return streamToBuffer(stream);
 		})
-		.then((arr) => {
+		.then((buffer) => {
 			const expectedFull = createBuffer(
 				'11155222333333330000000044444444',
-				DISK_SIZE
+				DISK_SIZE,
 			);
-			assert(Buffer.concat(arr).equals(expectedFull));
+			assert(buffer.equals(expectedFull));
 		})
 		// Test getStream with start position
 		.then(() => {
 			return disk.getStream(3);
 		})
 		.then((stream) => {
-			return streamToArrayAsync(stream);
+			return streamToBuffer(stream);
 		})
-		.then((arr) => {
+		.then((buffer) => {
 			const expectedFull = createBuffer(
 				'55222333333330000000044444444',
-				DISK_SIZE - 3
+				DISK_SIZE - 3,
 			);
-			assert(Buffer.concat(arr).equals(expectedFull));
+			assert(buffer.equals(expectedFull));
 		})
 		// Test getStream with start position and length
 		.then(() => {
 			return disk.getStream(3, 4);
 		})
 		.then((stream) => {
-			return streamToArrayAsync(stream);
+			return streamToBuffer(stream);
 		})
-		.then((arr) => {
+		.then((buffer) => {
 			const expectedFull = createBuffer('5522');
-			assert(Buffer.concat(arr).equals(expectedFull));
+			assert(buffer.equals(expectedFull));
 		})
 		//
 		.then(() => {
@@ -313,11 +316,11 @@ describe('file-disk', () => {
 			const secondRange = '44444477';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange))
+				sha256(createBuffer(firstRange)),
 			);
 			assert.strictEqual(
 				blockmap.ranges[1].checksum,
-				sha256(createBuffer(secondRange))
+				sha256(createBuffer(secondRange)),
 			);
 			return disk.getBlockMap(2, true);
 		})
@@ -326,11 +329,11 @@ describe('file-disk', () => {
 			const secondRange = '44444477';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange))
+				sha256(createBuffer(firstRange)),
 			);
 			assert.strictEqual(
 				blockmap.ranges[1].checksum,
-				sha256(createBuffer(secondRange))
+				sha256(createBuffer(secondRange)),
 			);
 			return disk.getBlockMap(3, true);
 		})
@@ -338,7 +341,7 @@ describe('file-disk', () => {
 			const firstRange = '116666999999998888888800444444770';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange))
+				sha256(createBuffer(firstRange)),
 			);
 			return disk.getBlockMap(4, true);
 		})
@@ -346,7 +349,7 @@ describe('file-disk', () => {
 			const firstRange = '11666699999999888888880044444477';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange))
+				sha256(createBuffer(firstRange)),
 			);
 			return disk.getBlockMap(5, true);
 		})
@@ -354,7 +357,7 @@ describe('file-disk', () => {
 			const firstRange = '11666699999999888888880044444477000';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange))
+				sha256(createBuffer(firstRange)),
 			);
 			return disk.getBlockMap(6, true);
 		})
@@ -362,7 +365,7 @@ describe('file-disk', () => {
 			const firstRange = '116666999999998888888800444444770000';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange))
+				sha256(createBuffer(firstRange)),
 			);
 			return disk.getBlockMap(7, true);
 		})
@@ -370,7 +373,7 @@ describe('file-disk', () => {
 			const firstRange = '11666699999999888888880044444477000';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange))
+				sha256(createBuffer(firstRange)),
 			);
 			return disk.getBlockMap(8, true);
 		})
@@ -378,7 +381,7 @@ describe('file-disk', () => {
 			const firstRange = '11666699999999888888880044444477';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange))
+				sha256(createBuffer(firstRange)),
 			);
 			return disk.getBlockMap(9, true);
 		})
@@ -386,7 +389,7 @@ describe('file-disk', () => {
 			const firstRange = '116666999999998888888800444444770000';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange))
+				sha256(createBuffer(firstRange)),
 			);
 			return disk.getBlockMap(10, true);
 		})
@@ -394,7 +397,7 @@ describe('file-disk', () => {
 			const firstRange = '1166669999999988888888004444447700000000';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange))
+				sha256(createBuffer(firstRange)),
 			);
 			return disk.getBlockMap(11, true);
 		})
@@ -402,7 +405,7 @@ describe('file-disk', () => {
 			const firstRange = '116666999999998888888800444444770';
 			assert.strictEqual(
 				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange))
+				sha256(createBuffer(firstRange)),
 			);
 		});
 	};

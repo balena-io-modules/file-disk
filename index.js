@@ -5,15 +5,18 @@ const Readable = require('stream').Readable;
 const fs = Promise.promisifyAll(require('fs'));
 const iisect = require('interval-intersection');
 
+const blockmap = require('./blockmap');
+const diskchunk = require('./diskchunk');
+
 const MIN_HIGH_WATER_MARK = 16;
 const DEFAULT_HIGH_WATER_MARK = 16384;
 
 class DiskStream extends Readable {
-	constructor(disk, capacity, highWaterMark) {
+	constructor(disk, capacity, highWaterMark, start) {
 		super({highWaterMark: Math.max(highWaterMark, MIN_HIGH_WATER_MARK)});
 		this.disk = disk;
 		this.capacity = capacity;
-		this.position = 0;
+		this.position = start;
 	}
 
 	_read() {
@@ -26,7 +29,7 @@ class DiskStream extends Readable {
 			self.push(null);
 			return;
 		}
-		const buffer = Buffer.allocUnsafe(self._readableState.highWaterMark);
+		const buffer = Buffer.allocUnsafe(length);
 		self.disk.read(
 			buffer,
 			0,  // buffer offset
@@ -38,7 +41,7 @@ class DiskStream extends Readable {
 					return;
 				}
 				self.position += length;
-				self.push(buf.slice(0, length));
+				self.push(buf);
 			}
 		);
 	}
@@ -57,43 +60,6 @@ function openFile(path, flags, mode) {
 	});
 }
 
-class DiskChunk {
-	constructor(buffer, offset) {
-		this.buffer = Buffer.from(buffer);
-		this.start = offset;
-		this.end = offset + buffer.length - 1;
-	}
-
-	interval() {
-		return [this.start, this.end];
-	}
-
-	intersection(other) {
-		return iisect(this.interval(), other.interval());
-	}
-
-	merge(other) {
-		// `other` must be an overlapping `DiskChunk`
-		const buffers = [];
-		if (other.start < this.start) {
-			buffers.push(other.buffer.slice(0, this.start - other.start));
-			this.start = other.start;
-		}
-		buffers.push(this.buffer);
-		if (other.end > this.end) {
-			buffers.push(
-				other.buffer.slice(
-					other.buffer.length - other.end + this.end
-				)
-			);
-			this.end = other.end;
-		}
-		if (buffers.length > 1) {
-			this.buffer = Buffer.concat(buffers, this.end - this.start + 1);
-		}
-	}
-}
-
 class Disk {
 	// Subclasses need to implement:
 	// * _getCapacity(callback)
@@ -108,25 +74,42 @@ class Disk {
 	// * write(buffer, bufferOffset, length, fileOffset, callback(err, bytesWritten))
 	// * flush(callback(err))
 	// * discard(offset, length, callback(err))
-	// * getStream(highWaterMark, callback(err, stream))
-	//   * highWaterMark [optional] is the size of chunks that will be read (default 16384, minimum 16)
+	// * getStream([position, [length, [highWaterMark]]], callback(err, stream))
+	//   * position: start reading from this offset (defaults to zero)
+	//   * length: read that amount of bytes (defaults to (disk capacity - position))
+	//   * highWaterMark: size of chunks that will be read (default 16384, minimum 16)
 	//   * `stream` will be a readable stream of the disk
-	constructor(readOnly, recordWrites, recordReads) {
+	constructor(readOnly, recordWrites, recordReads, discardIsZero) {
+		discardIsZero = (discardIsZero === undefined) ? true : discardIsZero;
 		this.readOnly = readOnly;
 		this.recordWrites = recordWrites;
 		this.recordReads = recordReads;
+		this.discardIsZero = discardIsZero;
 		this.knownChunks = [];  // sorted list of non overlapping DiskChunks
+		this.capacity = null;
 	}
 
 	read(buffer, bufferOffset, length, fileOffset, callback) {
-		const plan = this._createReadPlan(buffer, fileOffset, length);
+		const plan = this._createReadPlan(fileOffset, length);
 		this._readAccordingToPlan(buffer, plan, callback);
 	}
 
 	write(buffer, bufferOffset, length, fileOffset, callback) {
 		if (this.recordWrites) {
-			const end = bufferOffset + length;
-			this._insertDiskChunk(buffer.slice(bufferOffset, end), fileOffset);
+			const chunk = new diskchunk.BufferDiskChunk(
+				buffer.slice(bufferOffset, bufferOffset + length),
+				fileOffset
+			);
+			this._insertDiskChunk(chunk);
+		} else {
+			// Special case: we do not record writes but we may have recorded
+			// some discards. We want to remove any discard overlapping this
+			// write.
+			// In order to do this we do as if we were inserting a chunk: this
+			// will slice existing discards in this area if there are any.
+			const chunk = new diskchunk.DiscardDiskChunk(fileOffset, length);
+			// The `false` below means "don't insert the chunk into knownChunks"
+			this._insertDiskChunk(chunk, false);
 		}
 		if (this.readOnly) {
 			callback(null, length, buffer);
@@ -144,132 +127,158 @@ class Disk {
 	}
 	
 	discard(offset, length, callback) {
-		console.log('UNIMPLEMENTED: discarding', length, 'bytes at offset', offset);  // eslint-disable-line no-console
+		this._insertDiskChunk(new diskchunk.DiscardDiskChunk(offset, length));
 		callback(null);
 	}
 
 	getCapacity(callback) {
-		this._getCapacity(callback);
-	}
-
-	getStream(highWaterMark, callback) {
-		if ((typeof highWaterMark === 'function') && (callback === undefined)) {
-			callback = highWaterMark;
-			highWaterMark = DEFAULT_HIGH_WATER_MARK;
+		if (this.capacity !== null) {
+			callback(null, this.capacity);
+			return;
 		}
 		const self = this;
-		self.getCapacity(function(err, capacity) {
+		this._getCapacity(function(err, capacity) {
 			if (err) {
 				callback(err);
 				return;
 			}
-			callback(null, new DiskStream(self, capacity, highWaterMark));
+			self.capacity = capacity;
+			callback(null, capacity);
 		});
 	}
 
-	_insertDiskChunk(buffer, offset) {
-		const write = new DiskChunk(buffer, offset);
-		if (this.knownChunks.length === 0) {
-			// Special case for empty list: insert and return.
-			this.knownChunks.push(write);
-			return;
+	getStream(...argv) {
+		// args: ([position, [length, [highWaterMark]]], callback)
+		const callback = argv.pop();
+		let [ position, length, highWaterMark ] = argv;
+		position = Number.isInteger(position) ? position : 0;
+		if (!Number.isInteger(highWaterMark)) {
+			highWaterMark = DEFAULT_HIGH_WATER_MARK;
 		}
-		let firstFound = false;
-		let other;
-		for (let i = 0; i < this.knownChunks.length; i++) {
+		const self = this;
+		self.getCapacity(function(err, end) {
+			if (err) {
+				callback(err);
+				return;
+			}
+			if (Number.isInteger(length)) {
+				end = Math.min(position + length, end);
+			}
+			callback(null, new DiskStream(self, end, highWaterMark, position));
+		});
+	}
+
+	getDiscardedChunks() {
+		return this.knownChunks.filter(function(chunk) {
+			return (chunk instanceof diskchunk.DiscardDiskChunk);
+		});
+	}
+
+	getBlockMap(blockSize, calculateChecksums, callback) {
+		const self = this;
+		this.getCapacity(function(err, capacity) {
+			if (err) {
+				callback(err);
+				return;
+			}
+			blockmap.getBlockMap(self, blockSize, capacity, calculateChecksums, callback);
+		});
+	}
+
+	_insertDiskChunk(chunk, insert) {
+		insert = (insert === undefined) ? true : insert;
+		let other, i;
+		let insertAt = 0;
+		for (i = 0; i < this.knownChunks.length; i++) {
 			other = this.knownChunks[i];
-			if (!firstFound) {
-				if (write.intersection(other) !== null) {
-					// First intersection found: merge write and replace it.
-					write.merge(other);
-					this.knownChunks[i] = write;
-					firstFound = true;
-				} else if (write.end < other.start) {
-					// Our write is before the other: insert here and return.
-					this.knownChunks.splice(i, 0, write);
-					return;
-				}
+			if (other.start > chunk.end) {
+				break;
+			}
+			if (other.start < chunk.start) {
+				insertAt = i + 1;
 			} else {
-				if (write.intersection(other) !== null) {
-					// Another intersection found: merge write and remove it
-					write.merge(other);
-					this.knownChunks.splice(i, 1);
-					i--;
-				} else {
-					// No intersection found, we're done.
-					return;
-				}
+				insertAt = i;
+			}
+			if (!chunk.intersects(other)) {
+				continue;
+			} else if (other.includedIn(chunk)) {
+				// Delete other
+				this.knownChunks.splice(i, 1);
+				i--;
+			} else {
+				// Cut other
+				const newChunks = other.cut(chunk);
+				const args = [i, 1].concat(newChunks);
+				this.knownChunks.splice.apply(this.knownChunks, args);
+				i += newChunks.length - 1;
 			}
 		}
-		if (!firstFound) {
-			// No intersection and end of loop: our write is the last.
-			this.knownChunks.push(write);
+		if (insert) {
+			this.knownChunks.splice(insertAt, 0, chunk);
 		}
 	}
 
-	_createReadPlan(buf, offset, length) {
+	_createReadPlan(offset, length) {
 		const end = offset + length - 1;
 		const interval = [offset, end];
-		const intersections = this.knownChunks.filter(function(w) {
-			return (iisect(interval, w.interval()) !== null);
+		let chunks = this.knownChunks;
+		if (!this.discardIsZero) {
+			chunks = chunks.filter(function(chunk) {
+				return !(chunk instanceof diskchunk.DiscardDiskChunk);
+			});
+		}
+		const intersections = chunks.map(function(chunk) {
+			const inter = iisect(interval, chunk.interval());
+			return (inter !== null) ? chunk.slice(inter[0], inter[1]) : null;
+		}).filter(function(chunk) {
+			return (chunk !== null);
 		});
 		if (intersections.length === 0) {
 			return [ [ offset, end ] ];
 		}
 		const readPlan = [];
-		let w;
-		for (w of intersections) {
-			if (offset < w.start) {
-				readPlan.push([offset, w.start - 1]);
+		let chunk;
+		for (chunk of intersections) {
+			if (offset < chunk.start) {
+				readPlan.push([offset, chunk.start - 1]);
 			}
-			readPlan.push(w);
-			offset = w.end + 1;
+			readPlan.push(chunk);
+			offset = chunk.end + 1;
 		}
-		if (w && (end > w.end)) {
-			readPlan.push([w.end + 1, end]);
+		if (chunk && (end > chunk.end)) {
+			readPlan.push([chunk.end + 1, end]);
 		}
 		return readPlan;
 	}
 
 	_readAccordingToPlan(buffer, plan, callback) {
-		const self = this;
-		let chunksLeft = plan.length;
+		const readAsync = Promise.promisify(this._read, { context: this });
 		let offset = 0;
-		let failed = false;
-		function done() {
-			if (!failed && (chunksLeft === 0)) {
-				callback(null, offset, buffer);
-			}
-		}
-		for (let entry of plan) {
-			if (entry instanceof DiskChunk) {
-				entry.buffer.copy(buffer, offset);
-				offset += entry.buffer.length;
-				chunksLeft--;
+		Promise.each(plan, (entry) => {
+			if (entry instanceof diskchunk.DiskChunk) {
+				const data = entry.data();
+				const length = Math.min(data.length, buffer.length - offset);
+				data.copy(buffer, offset, 0, length);
+				offset += length;
 			} else {
 				const length = entry[1] - entry[0] + 1;
-				this._read(buffer, offset, length, entry[0], function(err) {
-					if (err) {
-						if (!failed) {
-							callback(err.errno);
-							failed = true;
-						}
-					} else {
-						if (self.recordReads) {
-							console.log("saving", entry)
-							self._insertDiskChunk(
-								buffer.slice(entry[0], entry[1] + 1),
-								entry[0]
-							);
-						}
-						chunksLeft--;
-						done();
+				return readAsync(buffer, offset, length, entry[0])
+				.then(() => {
+					if (this.recordReads) {
+						const chunk = new diskchunk.BufferDiskChunk(
+							Buffer.from(buffer.slice(offset, offset + length)),
+							entry[0]
+						);
+						this._insertDiskChunk(chunk);
 					}
+					offset += length;
 				});
-				offset += length;
 			}
-		}
-		done();
+		})
+		.then(() => {
+			callback(null, offset, buffer);
+		})
+		.catch(callback);
 	}
 }
 
@@ -303,8 +312,9 @@ class FileDisk extends Disk {
 }
 
 class S3Disk extends Disk {
-	constructor(s3, bucket, key, recordReads) {
-		super(true, true, recordReads);
+	constructor(s3, bucket, key, recordReads, discardIsZero) {
+		discardIsZero = (discardIsZero === undefined) ? true : discardIsZero;
+		super(true, true, recordReads, discardIsZero);
 		this.s3 = s3;
 		this.bucket = bucket;
 		this.key = key;

@@ -164,7 +164,7 @@ class Disk {
 			if (Number.isInteger(length)) {
 				end = Math.min(position + length, end);
 			}
-			callback(null,new DiskStream(self, end, highWaterMark, position));
+			callback(null, new DiskStream(self, end, highWaterMark, position));
 		});
 	}
 

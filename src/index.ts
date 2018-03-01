@@ -1,5 +1,5 @@
 import * as AWS from 'aws-sdk';
-import * as Promise from 'bluebird';
+import * as Bluebird from 'bluebird';
 import { Readable } from 'stream';
 
 import { getBlockMap } from './blockmap';
@@ -44,11 +44,11 @@ export class DiskStream extends Readable {
 
 type ReadPlan = (Interval | DiskChunk)[];
 
-export const openFile = (path: string, flags: string | number, mode?: number): Promise.Disposer<number> => {
+export const openFile = (path: string, flags: string | number, mode?: number): Bluebird.Disposer<number> => {
 	// Opens a file and closes it when you're done using it.
 	// Arguments are the same that for `fs.open()`
 	// Use it with Bluebird's `using`, example:
-	// Promise.using(openFile('/some/path', 'r+'), (fd) => {
+	// Bluebird.using(openFile('/some/path', 'r+'), (fd) => {
 	//   doSomething(fd);
 	// });
 	return fs.open(path, flags, mode)
@@ -59,18 +59,18 @@ export const openFile = (path: string, flags: string | number, mode?: number): P
 
 export abstract class Disk {
 	// Subclasses need to implement:
-	// * _getCapacity(): Promise<Number>
-	// * _read(buffer, bufferOffset, length, fileOffset): Promise<{ bytesRead: Number, buffer: Buffer }>
-	// * _write(buffer, bufferOffset, length, fileOffset): Promise<{ bytesWritten: Number, buffer: Buffer }> [only for writable disks]
-	// * _flush(): Promise<void> [only for writable disks]
+	// * _getCapacity(): Bluebird<Number>
+	// * _read(buffer, bufferOffset, length, fileOffset): Bluebird<{ bytesRead: Number, buffer: Buffer }>
+	// * _write(buffer, bufferOffset, length, fileOffset): Bluebird<{ bytesWritten: Number, buffer: Buffer }> [only for writable disks]
+	// * _flush(): Bluebird<void> [only for writable disks]
 	//
 	// Users of instances of subclasses can use:
-	// * getCapacity(): Promise<Number>
-	// * read(buffer, bufferOffset, length, fileOffset): Promise<{ bytesRead: Number, buffer: Buffer }>
-	// * write(buffer, bufferOffset, length, fileOffset): Promise<{ bytesWritten: Number, buffer: Buffer }>
-	// * flush(): Promise<void>
-	// * discard(offset, length): Promise<void>
-	// * getStream([position, [length, [highWaterMark]]]): Promise<stream.Readable>
+	// * getCapacity(): Bluebird<Number>
+	// * read(buffer, bufferOffset, length, fileOffset): Bluebird<{ bytesRead: Number, buffer: Buffer }>
+	// * write(buffer, bufferOffset, length, fileOffset): Bluebird<{ bytesWritten: Number, buffer: Buffer }>
+	// * flush(): Bluebird<void>
+	// * discard(offset, length): Bluebird<void>
+	// * getStream([position, [length, [highWaterMark]]]): Bluebird<stream.Readable>
 	//   * position: start reading from this offset (defaults to zero)
 	//   * length: read that amount of bytes (defaults to (disk capacity - position))
 	//   * highWaterMark: size of chunks that will be read (default 16384, minimum 16)
@@ -80,13 +80,13 @@ export abstract class Disk {
 	constructor(public readOnly: boolean = false, public recordWrites: boolean = false, public recordReads: boolean = false, public discardIsZero: boolean = true) {
 	}
 
-	protected abstract _getCapacity(): Promise<number>;
+	protected abstract _getCapacity(): Bluebird<number>;
 
-	protected abstract _read(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Promise<fs.ReadResult>;
+	protected abstract _read(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Bluebird<fs.ReadResult>;
 
-	protected abstract _write(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Promise<fs.WriteResult>;
+	protected abstract _write(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Bluebird<fs.WriteResult>;
 
-	protected abstract _flush(): Promise<void>;
+	protected abstract _flush(): Bluebird<void>;
 
 	public read(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number) {
 		const plan = this.createReadPlan(fileOffset, length);
@@ -111,7 +111,7 @@ export abstract class Disk {
 			this.insertDiskChunk(chunk, false);
 		}
 		if (this.readOnly) {
-			return Promise.resolve({ bytesWritten: length, buffer });
+			return Bluebird.resolve({ bytesWritten: length, buffer });
 		} else {
 			return this._write(buffer, bufferOffset, length, fileOffset);
 		}
@@ -119,20 +119,20 @@ export abstract class Disk {
 
 	public flush() {
 		if (this.readOnly) {
-			return Promise.resolve();
+			return Bluebird.resolve();
 		} else {
 			return this._flush();
 		}
 	}
 
-	public discard(offset: number, length: number): Promise<void> {
+	public discard(offset: number, length: number): Bluebird<void> {
 		this.insertDiskChunk(new DiscardDiskChunk(offset, length));
-		return Promise.resolve();
+		return Bluebird.resolve();
 	}
 
-	public getCapacity(): Promise<number> {
+	public getCapacity(): Bluebird<number> {
 		if (this.capacity !== null) {
-			return Promise.resolve(this.capacity);
+			return Bluebird.resolve(this.capacity);
 		}
 		return this._getCapacity()
 		.then((capacity) => {
@@ -141,7 +141,7 @@ export abstract class Disk {
 		});
 	}
 
-	public getStream(position: number = 0, length: number | null = null, highWaterMark: number = DEFAULT_HIGH_WATER_MARK): Promise<DiskStream> {
+	public getStream(position: number = 0, length: number | null = null, highWaterMark: number = DEFAULT_HIGH_WATER_MARK): Bluebird<DiskStream> {
 		return this.getCapacity()
 		.then((end) => {
 			if (length !== null) {
@@ -230,7 +230,7 @@ export abstract class Disk {
 
 	private readAccordingToPlan(buffer: Buffer, plan: ReadPlan) {
 		let offset = 0;
-		return Promise.each(plan, (entry) => {
+		return Bluebird.each(plan, (entry) => {
 			if (entry instanceof DiskChunk) {
 				const data = entry.data();
 				const length = Math.min(data.length, buffer.length - offset);
@@ -266,15 +266,15 @@ export class FileDisk extends Disk {
 		return fs.fstat(this.fd).get('size');
 	}
 
-	protected _read(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Promise<fs.ReadResult> {
+	protected _read(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Bluebird<fs.ReadResult> {
 		return fs.read(this.fd, buffer, bufferOffset, length, fileOffset);
 	}
 
-	protected _write(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Promise<fs.WriteResult> {
+	protected _write(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Bluebird<fs.WriteResult> {
 		return fs.write(this.fd, buffer, bufferOffset, length, fileOffset);
 	}
 
-	protected _flush(): Promise<void> {
+	protected _flush(): Bluebird<void> {
 		return fs.fdatasync(this.fd).return();
 	}
 }
@@ -302,28 +302,28 @@ export class S3Disk extends Disk {
 		return { Bucket: this.bucket, Key: this.key };
 	}
 
-	protected _getCapacity(): Promise<number> {
+	protected _getCapacity(): Bluebird<number> {
 		// Make sure we return a Bluebird Promise
-		return Promise.resolve(this.s3.headObject(this.getS3Params()).promise())
+		return Bluebird.resolve(this.s3.headObject(this.getS3Params()).promise())
 		.then(getContentLength);
 	}
 
-	protected _read(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Promise<fs.ReadResult> {
+	protected _read(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Bluebird<fs.ReadResult> {
 		const params = this.getS3Params();
 		params.Range = `bytes=${fileOffset}-${fileOffset + length - 1}`;
 		// Make sure we return a Bluebird Promise
-		return Promise.resolve(this.s3.getObject(params).promise())
+		return Bluebird.resolve(this.s3.getObject(params).promise())
 		.then((data) => {
 			(data.Body as Buffer).copy(buffer, bufferOffset);
 			return { bytesRead: getContentLength(data), buffer };
 		});
 	}
 
-	protected _write(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Promise<fs.WriteResult> {
-		return Promise.reject(new Error("Can't write in a S3Disk"));
+	protected _write(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Bluebird<fs.WriteResult> {
+		return Bluebird.reject(new Error("Can't write in a S3Disk"));
 	}
 
-	protected _flush(): Promise<void> {
-		return Promise.reject(new Error("Can't flush a S3Disk"));
+	protected _flush(): Bluebird<void> {
+		return Bluebird.reject(new Error("Can't flush a S3Disk"));
 	}
 }

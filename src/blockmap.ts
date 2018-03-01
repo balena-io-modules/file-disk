@@ -1,5 +1,5 @@
 import * as BlockMap from 'blockmap';
-import * as Promise from 'bluebird';
+import * as Bluebird from 'bluebird';
 import { createHash } from 'crypto';
 import { Readable } from 'stream';
 
@@ -40,9 +40,9 @@ function* mergeBlocks(blocks: Interval[]): Iterable<Interval> {
 	}
 }
 
-const streamSha256 = (stream: Readable): Promise<string> => {
+const streamSha256 = (stream: Readable): Bluebird<string> => {
 	const hash = createHash('sha256');
-	return new Promise((resolve, reject) => {
+	return new Bluebird((resolve, reject) => {
 		stream.on('error', reject);
 		hash.on('error', reject);
 		hash.on('finish', () => {
@@ -58,14 +58,14 @@ interface BlockMapRange {
 	checksum: string | null;
 }
 
-const getRanges = (disk: Disk, blocks: Interval[], blockSize: number, calculateChecksums: boolean): Promise<BlockMapRange[]> => {
+const getRanges = (disk: Disk, blocks: Interval[], blockSize: number, calculateChecksums: boolean): Bluebird<BlockMapRange[]> => {
 	const result: BlockMapRange[] = blocks.map((block) => {
 		return { start: block[0], end: block[1], checksum: null };
 	});
 	if (!calculateChecksums) {
-		return Promise.resolve(result);
+		return Bluebird.resolve(result);
 	}
-	return Promise.each(blocks, (block, i) => {
+	return Bluebird.each(blocks, (block, i) => {
 		const start  = block[0] * blockSize;
 		const length = (block[1] - block[0] + 1) * blockSize;
 		return disk.getStream(start, length)

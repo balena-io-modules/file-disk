@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as aws from 'aws-sdk';
-import * as Promise from 'bluebird';
+import * as Bluebird from 'bluebird';
 import { createHash } from 'crypto';
 import * as fs from 'fs';
 import { afterEach, beforeEach, describe } from 'mocha';
@@ -23,7 +23,7 @@ const S3 = new aws.S3({
 });
 
 const streamToBuffer = (stream) => {
-	return new Promise((resolve, reject) => {
+	return new Bluebird((resolve, reject) => {
 		const chunks = [];
 		stream.on('error', reject);
 		stream.on('data', chunks.push.bind(chunks));
@@ -76,14 +76,14 @@ const testOnAllDisks = (fn) => {
 		openFile(DISK_PATH, 'r'),
 		openFile(TMP_DISK_PATH, 'r+'),
 	];
-	return Promise.using(files, (fds) => {
+	return Bluebird.using(files, (fds) => {
 		const disks = [
 			createCowDisk(fds[0]),
 			createCowDisk2(fds[0]),
 			createDisk(fds[1]),
 			createS3CowDisk(),
 		];
-		return Promise.all(disks.map(fn));
+		return Bluebird.all(disks.map(fn));
 	});
 };
 

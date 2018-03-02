@@ -96,7 +96,7 @@ export const getBlockMap = async (disk: Disk, blockSize: number, capacity: numbe
 		return a + b;
 	});
 	const ranges = await getRanges(disk, blocks, blockSize, calculateChecksums);
-	const bmap = new (BlockMap as any)({  // Ugly hack to avoid `Cannot use 'new' with an expression whose type lacks a call or construct signature.`
+	const bmap = new BlockMap({
 		imageSize: capacity,
 		blockSize,
 		blockCount: Math.ceil(capacity / blockSize),

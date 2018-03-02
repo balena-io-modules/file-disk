@@ -24,13 +24,10 @@ Subclasses must implement 2 methods:
  this `DiskChunk`.
 */
 export abstract class DiskChunk {
-	readonly start: number;
-	readonly end: number;
-
-	constructor(start: number, end: number) {
-		this.start = start;  // position in file
-		this.end = end;      // position of the last byte in file (included)
-	}
+	constructor(
+		public readonly start: number,  // position in file
+		public readonly end: number,    // position of the last byte in file (included)
+	) {}
 
 	abstract slice(start: number, end: number): DiskChunk;
 

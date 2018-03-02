@@ -1,6 +1,6 @@
 import * as AWS from 'aws-sdk';
 import * as Bluebird from 'bluebird';
-import { Readable } from 'stream';
+import { Readable, Transform } from 'stream';
 
 import { getBlockMap } from './blockmap';
 import { BufferDiskChunk, DiscardDiskChunk, DiskChunk } from './diskchunk';
@@ -39,6 +39,52 @@ export class DiskStream extends Readable {
 		.catch((err) => {
 			this.emit('error', err);
 		});
+	}
+}
+
+class DiskTransformStream extends Transform {
+	// Adds the recorded writes to the original disk stream.
+	private position: number = 0;
+	private readonly chunks: Iterator<DiskChunk>;
+	private currentChunk: DiskChunk | null;
+
+	constructor(private readonly disk: Disk) {
+		super();
+		this.chunks = this.getKnownChunks();
+		this.currentChunk = this.chunks.next().value;
+	}
+
+	private *getKnownChunks(): Iterator<DiskChunk> {
+		for (const chunk of this.disk.knownChunks) {
+			if (chunk instanceof BufferDiskChunk) {
+				yield chunk;
+			}
+		}
+	}
+
+	public _transform(chunk: Buffer, enc: string, cb: () => void): void {
+		const start: number = this.position;
+		const end: number = start + chunk.length - 1;
+		const interval: Interval = [ start, end ];
+		while (this.currentChunk) {
+			if (intervalIntersection(this.currentChunk.interval(), interval)) {
+				const buf = this.currentChunk.data();
+				const startShift = this.currentChunk.start - start;
+				const endShift = this.currentChunk.end - end;
+				const sourceStart = (startShift < 0) ? -startShift : 0;
+				const sourceEnd = buf.length - Math.max(endShift, 0);
+				const targetStart = Math.max(startShift, 0);
+				buf.copy(chunk, targetStart, sourceStart, sourceEnd);
+			}
+			if (this.currentChunk.end > end) {
+				break;
+			} else {
+				this.currentChunk = this.chunks.next().value;
+			}
+		}
+		this.push(chunk);
+		this.position = end + 1;
+		cb();
 	}
 }
 
@@ -87,6 +133,11 @@ export abstract class Disk {
 	protected abstract async _write(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Promise<fs.WriteResult>;
 
 	protected abstract async _flush(): Promise<void>;
+
+	public getTransformStream(): Transform {
+		// Returns a Transform that adds the recorded writes to the original image stream.
+		return new DiskTransformStream(this);
+	}
 
 	public async read(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Promise<fs.ReadResult> {
 		const plan = this.createReadPlan(fileOffset, length);

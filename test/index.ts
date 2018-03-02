@@ -305,6 +305,22 @@ describe('file-disk', () => {
 		const blockmap11 = await disk.getBlockMap(11, true);
 		assert.strictEqual(blockmap11.ranges.length, 1);
 		assert.strictEqual(blockmap11.ranges[0].checksum, sha256(createBuffer('116666999999998888888800444444770')));
+
+		// Test that disk.getStream() and the original image stream transformed by disk.getTransformStream() return the same streams.
+		if (disk.readOnly && disk.recordWrites) {  // This test only makes sense for disks that record writes.
+			const diskStream = await disk.getStream();
+			const buf1 = await streamToBuffer(diskStream);
+			let originalImageStream;
+			if (disk instanceof S3Disk) {
+				originalImageStream = S3.getObject({ Bucket: BUCKET_NAME, Key: FILE_NAME }).createReadStream();
+			} else {
+				originalImageStream = fs.createReadStream(DISK_PATH);
+			}
+			const transform = disk.getTransformStream();
+			originalImageStream.pipe(transform);
+			const buf2 = await streamToBuffer(transform);
+			assert(buf1.equals(buf2));
+		}
 	};
 
 	it('copy on write mode should properly record overlapping writes', async () => {

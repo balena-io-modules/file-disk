@@ -20,41 +20,34 @@ any time!**
  - `discardIsZero`, a boolean (default `true`): don't read discarded regions,
  return zero filled buffers instead.
 
-`FileDisk.getCapacity(callback(err, size))`
+`FileDisk.getCapacity()`: `Promise<Number>`
 
- - `callback(err, size)` will be called with the size of the disk image in
- bytes
-
-`FileDisk.read(buffer, bufferOffset, length, fileOffset, callback(err, bytesRead, buffer))`
+`FileDisk.read(buffer, bufferOffset, length, fileOffset)`: `Promise<{ bytesRead: Number, buffer: Buffer }>`
 
  - behaves like [fs.read](https://nodejs.org/api/fs.html#fs_fs_read_fd_buffer_offset_length_position_callback)
 
-`FileDisk.write(buffer, bufferOffset, length, fileOffset, callback(err, bytesWritten))`
+`FileDisk.write(buffer, bufferOffset, length, fileOffset)`: `Promise<{ bytesWritten: Number, buffer: Buffer }>`
 
  - behaves like [fs.write](https://nodejs.org/api/fs.html#fs_fs_write_fd_buffer_offset_length_position_callback)
 
-`FileDisk.flush(callback(err))`
+`FileDisk.flush()`: `Promise<void>`
 
  - behaves like [fs.fdatasync](https://nodejs.org/api/fs.html#fs_fs_fdatasync_fd_callback)
 
-`FileDisk.discard(offset, length, callback(err))`
+`FileDisk.discard(offset, length)`: `Promise<void>`
 
- - not implemented
-
-`FileDisk.getStream([position, [length, [highWaterMark]]], callback(err, stream))`
+`FileDisk.getStream([position, [length, [highWaterMark]]])`: `Promise<stream.Readable>`
  - `position` start reading from this offset (defaults to 0)
  - `length` read that amount of bytes (defaults to (disk capacity - position))
  - `highWaterMark` (defaults to 16384, minimum 16) is the size of chunks that
  will be read
- - `callback(err, stream)` will be called with a readable stream of the disk
- content
 
 `FileDisk.getDiscardedChunks()` returns the list of discarded chunks. Each chunk
 has a `start` and `end` properties. `end` position is inclusive.
 
-`FileDisk.getBlockMap(blockSize, calculateChecksums, callback(err, blockmap))` using the disk's
-discarded chunks and the given blockSize, it calls back with
-a [`BlockMap`](https://github.com/resin-io-modules/blockmap).
+`FileDisk.getBlockMap(blockSize, calculateChecksums`: `Promise<blockmap.BlockMap>`
+ - using the disk's discarded chunks and the given blockSize, it returns a Promise
+of a [`BlockMap`](https://github.com/resin-io-modules/blockmap).
 Be careful to how you use `Disk`'s `discardIsZero` option as it may change the
 blockmap ranges checksums if discarded regions not aligned with `blockSize`
 contain anything else than zeros on the disk.
@@ -80,28 +73,22 @@ For more information about S3Disk parameters see
 
 ```javascript
 
-const Promise = require('bluebird');
-const filedisk = Promise.promisifyAll(require('file-disk'), { multiArgs: true });
+const Bluebird = require('bluebird');
+const filedisk = require('file-disk');
 
-Promise.using(filedisk.openFile('/path/to/some/file', 'r+'), function(fd) {
+Bluebird.using(filedisk.openFile('/path/to/some/file', 'r+'), async (fd) => {
 	const disk = new filedisk.FileDisk(fd)
 
 	// get file size
-	return disk.getCapacityAsync()
-	.spread(function(size) {
-		console.log("size:", size);
-		const buf = Buffer.alloc(1024);
-		// read `buf.length` bytes starting at 0 from the file into `buf`
-		return disk.readAsync(buf, 0, buf.length, 0);
-	})
-	.spread(function(bytesRead, buf) {
-		// write `buf` into file starting at `buf.length` (in the file)
-		return disk.writeAsync(buf, 0, buf.length, buf.length);
-	})
-	.spread(function(bytesWritten) {
-		// flush
-		return disk.flushAsync();
-	});
+	const size = await disk.getCapacity();
+	console.log("size:", size);
+	const buf = Buffer.alloc(1024);
+	// read `buf.length` bytes starting at 0 from the file into `buf`
+	const { bytesRead, buffer } = await disk.read(buf, 0, buf.length, 0);
+	// write `buffer` into file starting at `buffer.length` (in the file)
+	await disk.write(buf, 0, buf.length, buf.length);
+	// flush
+	await disk.flush();
 });
 
 
@@ -111,39 +98,30 @@ Promise.using(filedisk.openFile('/path/to/some/file', 'r+'), function(fd) {
 
 ```javascript
 
-const Promise = require('bluebird');
-const filedisk = Promise.promisifyAll(require('file-disk'), { multiArgs: true });
+const Bluebird = require('bluebird');
+const filedisk = require('file-disk');
 
-const buf = Buffer.alloc(1024);
+const BUF = Buffer.alloc(1024);
 
-Promise.using(filedisk.openFile('/path/to/some/file', 'r'), function(fd) {
+Bluebird.using(filedisk.openFile('/path/to/some/file', 'r'), async (fd) => {
 	const disk = new filedisk.FileDisk(fd, true, true);
+	let bytesRead, bytesWritten, buffer;
 
-	// read `buf.length` bytes starting at 0 from the file into `buf`
-	return disk.readAsync(buf, 0, buf.length, 0);
-	.spread(function(bytesRead, buf) {
-		// write `buf` into file starting at `buf.length` (in the file)
-		return disk.writeAsync(buf, 0, buf.length, buf.length);
-	})
-	.spread(function(bytesWritten) {
-		const buf2 = Buffer.alloc(1024);
-		// read what we've just written
-		return disk.readAsync(buf2, 0, buf.length, 0);
-	});
-	.spread(function(bytesRead, buf2) {
-		// writes are stored in memory
-		assert(buf.equals(buf2));
-	})
-	.then(function() {
-		return disk.getStreamAsync();
-	})
-	.spread(function(stream) {
-		// pipe the stream somewhere
-		return new Promise(function(resolve, reject) {
-			stream.pipe(someWritableStream)
-			.on('close', resolve)
-			.on('error', reject);
-		});
+	// read `BUF.length` bytes starting at 0 from the file into `BUF`
+	{ bytesRead, buffer } = await disk.read(BUF, 0, BUF.length, 0);
+	// write `buffer` into file starting at `buffer.length` (in the file)
+	{ bytesWritten, buffer } = await disk.write(buffer, 0, buffer.length, buffer.length);
+	const buf2 = Buffer.alloc(1024);
+	// read what we've just written
+	{ bytesRead, buffer } = await disk.read(buf2, 0, buffer.length, 0);
+	// writes are stored in memory
+	assert(BUF.equals(buffer));
+	const stream = await disk.getStream();
+	// pipe the stream somewhere
+	await new Bluebird((resolve, reject) => {
+		stream.pipe(someWritableStream)
+		.on('close', resolve)
+		.on('error', reject);
 	});
 });
 

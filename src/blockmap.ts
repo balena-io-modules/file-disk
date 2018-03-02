@@ -40,9 +40,9 @@ function* mergeBlocks(blocks: Interval[]): Iterable<Interval> {
 	}
 }
 
-const streamSha256 = (stream: Readable): Bluebird<string> => {
+const streamSha256 = async (stream: Readable): Promise<string> => {
 	const hash = createHash('sha256');
-	return new Bluebird((resolve, reject) => {
+	return await new Promise<string>((resolve, reject) => {
 		stream.on('error', reject);
 		hash.on('error', reject);
 		hash.on('finish', () => {
@@ -58,25 +58,20 @@ interface BlockMapRange {
 	checksum: string | null;
 }
 
-const getRanges = (disk: Disk, blocks: Interval[], blockSize: number, calculateChecksums: boolean): Bluebird<BlockMapRange[]> => {
+const getRanges = async (disk: Disk, blocks: Interval[], blockSize: number, calculateChecksums: boolean): Promise<BlockMapRange[]> => {
 	const result: BlockMapRange[] = blocks.map((block) => {
 		return { start: block[0], end: block[1], checksum: null };
 	});
 	if (!calculateChecksums) {
-		return Bluebird.resolve(result);
+		return result;
 	}
-	return Bluebird.each(blocks, (block, i) => {
+	await Bluebird.each(blocks, async (block, i) => {
 		const start  = block[0] * blockSize;
 		const length = (block[1] - block[0] + 1) * blockSize;
-		return disk.getStream(start, length)
-		.then((stream) => {
-			return streamSha256(stream)
-			.then((hex) => {
-				result[i].checksum = hex;
-			});
-		});
-	})
-	.return(result);
+		const stream = await disk.getStream(start, length);
+		result[i].checksum = await streamSha256(stream);
+	});
+	return result;
 };
 
 const calculateBmapSha256 = (bmap: any): void => {
@@ -86,7 +81,7 @@ const calculateBmapSha256 = (bmap: any): void => {
 	bmap.checksum = hash.digest('hex');
 };
 
-export const getBlockMap = (disk: Disk, blockSize: number, capacity: number, calculateChecksums: boolean): any => {
+export const getBlockMap = async (disk: Disk, blockSize: number, capacity: number, calculateChecksums: boolean): Promise<any> => {
 	const chunks: Interval[] = getNotDiscardedChunks(disk, capacity);
 	let blocks: Interval[] = chunks.map((chunk: Interval): Interval => {
 		return [
@@ -100,16 +95,14 @@ export const getBlockMap = (disk: Disk, blockSize: number, capacity: number, cal
 	}).reduce((a, b) => {
 		return a + b;
 	});
-	return getRanges(disk, blocks, blockSize, calculateChecksums)
-	.then((ranges) => {
-		const bmap = new (BlockMap as any)({  // Ugly hack to avoid `Cannot use 'new' with an expression whose type lacks a call or construct signature.`
-			imageSize: capacity,
-			blockSize,
-			blockCount: Math.ceil(capacity / blockSize),
-			mappedBlockCount,
-			ranges,
-		});
-		calculateBmapSha256(bmap);
-		return bmap;
+	const ranges = await getRanges(disk, blocks, blockSize, calculateChecksums);
+	const bmap = new (BlockMap as any)({  // Ugly hack to avoid `Cannot use 'new' with an expression whose type lacks a call or construct signature.`
+		imageSize: capacity,
+		blockSize,
+		blockCount: Math.ceil(capacity / blockSize),
+		mappedBlockCount,
+		ranges,
 	});
+	calculateBmapSha256(bmap);
+	return bmap;
 };

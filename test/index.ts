@@ -119,79 +119,67 @@ describe('file-disk', () => {
 		fs.unlinkSync(TMP_DISK_PATH);
 	});
 
-	const testGetCapacity = (disk) => {
-		return disk.getCapacity()
-		.then((size) => {
-			assert.strictEqual(size, DISK_SIZE);
-		});
+	const testGetCapacity = async (disk) => {
+		const size = await disk.getCapacity();
+		assert.strictEqual(size, DISK_SIZE);
 	};
 
-	it('getCapacity should return the disk size', () => {
-		return testOnAllDisks(testGetCapacity);
+	it('getCapacity should return the disk size', async () => {
+		await testOnAllDisks(testGetCapacity);
 	});
 
-	const readRespectsLength = (disk) => {
+	const readRespectsLength = async (disk) => {
 		const buf = Buffer.allocUnsafe(1024);
 		buf.fill(1);
-		return disk.read(buf, 0, 10, 0)
-		.then((result) => {
-			const firstTenBytes = Buffer.allocUnsafe(10);
-			firstTenBytes.fill(0);
-			// first ten bytes were read: zeros
-			assert(result.buffer.slice(0, 10).equals(firstTenBytes));
-			assert.strictEqual(result.bytesRead, 10);
-			const rest = Buffer.alloc(1024 - 10);
-			rest.fill(1);
-			// the rest was not updated: ones
-			assert(result.buffer.slice(10).equals(rest));
-		});
+		const result = await disk.read(buf, 0, 10, 0);
+		const firstTenBytes = Buffer.allocUnsafe(10);
+		firstTenBytes.fill(0);
+		// first ten bytes were read: zeros
+		assert(result.buffer.slice(0, 10).equals(firstTenBytes));
+		assert.strictEqual(result.bytesRead, 10);
+		const rest = Buffer.alloc(1024 - 10);
+		rest.fill(1);
+		// the rest was not updated: ones
+		assert(result.buffer.slice(10).equals(rest));
 	};
 
-	it('read should respect the length parameter', () => {
-		return testOnAllDisks(readRespectsLength);
+	it('read should respect the length parameter', async () => {
+		await testOnAllDisks(readRespectsLength);
 	});
 
-	const writeRespectsLength = (disk) => {
+	const writeRespectsLength = async (disk) => {
 		const buf = Buffer.alloc(1024);
 		buf.fill(1);
-		return disk.write(buf, 0, 10, 0)
-		.then(() => {
-			return disk.read(Buffer.allocUnsafe(1024), 0, 1024, 0);
-		})
-		.then((result) => {
-			const firstTenBytes = Buffer.allocUnsafe(10);
-			firstTenBytes.fill(1);
-			// first ten bytes were written: ones
-			assert(result.buffer.slice(0, 10).equals(firstTenBytes));
-			assert.strictEqual(result.bytesRead, 1024);
-			const rest = Buffer.alloc(1024 - 10);
-			// the rest was not written: zeros
-			assert(result.buffer.slice(10).equals(rest));
-		});
+		await disk.write(buf, 0, 10, 0);
+		const result = await disk.read(Buffer.allocUnsafe(1024), 0, 1024, 0);
+		const firstTenBytes = Buffer.allocUnsafe(10);
+		firstTenBytes.fill(1);
+		// first ten bytes were written: ones
+		assert(result.buffer.slice(0, 10).equals(firstTenBytes));
+		assert.strictEqual(result.bytesRead, 1024);
+		const rest = Buffer.alloc(1024 - 10);
+		// the rest was not written: zeros
+		assert(result.buffer.slice(10).equals(rest));
 	};
 
-	it('write should respect the length parameter', () => {
-		return testOnAllDisks(writeRespectsLength);
+	it('write should respect the length parameter', async () => {
+		await testOnAllDisks(writeRespectsLength);
 	});
 
-	const shouldReadAndWrite = (disk) => {
+	const shouldReadAndWrite = async (disk) => {
 		const buf = Buffer.allocUnsafe(1024);
 		buf.fill(1);
-		return disk.write(buf, 0, buf.length, 0)
-		.then((data) => {
-			assert.strictEqual(data.bytesWritten, buf.length);
-			const buf2 = Buffer.allocUnsafe(1024);
-			return disk.read(buf2, 0, buf2.length, 0);
-		})
-		.then((data) => {
-			assert.strictEqual(data.bytesRead, data.buffer.length);
-			assert(buf.equals(data.buffer));
-			return disk.flush();
-		});
+		const writeResult = await disk.write(buf, 0, buf.length, 0);
+		assert.strictEqual(writeResult.bytesWritten, buf.length);
+		const buf2 = Buffer.allocUnsafe(1024);
+		const readResult = await disk.read(buf2, 0, buf2.length, 0);
+		assert.strictEqual(readResult.bytesRead, readResult.buffer.length);
+		assert(buf.equals(readResult.buffer));
+		await disk.flush();
 	};
 
-	it('should write and read', () => {
-		return testOnAllDisks(shouldReadAndWrite);
+	it('should write and read', async () => {
+		await testOnAllDisks(shouldReadAndWrite);
 	});
 
 	const createBuffer = (pattern, size) => {
@@ -202,215 +190,124 @@ describe('file-disk', () => {
 		return buffer;
 	};
 
-	const checkDiskContains = (disk, pattern) => {
+	const checkDiskContains = async (disk, pattern) => {
 		// Helper for checking disk contents.
-		return () => {
-			const size = 32;
-			const expected = createBuffer(pattern, size);
-			return disk.read(Buffer.allocUnsafe(size), 0, size, 0)
-			.then(({ buffer }) => {
-				assert(buffer.equals(expected));
-			});
-		};
+		const size = 32;
+		const expected = createBuffer(pattern, size);
+		const { buffer } = await disk.read(Buffer.allocUnsafe(size), 0, size, 0);
+		assert(buffer.equals(expected));
 	};
 
-	const overlappingWrites = (disk) => {
+	const overlappingWrites = async (disk) => {
 		const buf = Buffer.allocUnsafe(8);
+		await disk.discard(0, DISK_SIZE);
+
 		buf.fill(1);
-		return disk.discard(0, DISK_SIZE)
-		.then(() => {
-			return disk.write(buf, 0, buf.length, 0);
-		})
-		.then(checkDiskContains(disk, '11111111'))
-		.then(() => {
-			buf.fill(2);
-			return disk.write(buf, 0, buf.length, 4);
-		})
-		.then(checkDiskContains(disk, '111122222222'))
-		.then(() => {
-			buf.fill(3);
-			return disk.write(buf, 0, buf.length, 8);
-		})
-		.then(checkDiskContains(disk, '1111222233333333'))
-		.then(() => {
-			buf.fill(4);
-			return disk.write(buf, 0, buf.length, 24);
-		})
-		.then(checkDiskContains(disk, '11112222333333330000000044444444'))
-		.then(() => {
-			buf.fill(5);
-			return disk.write(buf, 0, 2, 3);
-		})
-		.then(checkDiskContains(disk, '11155222333333330000000044444444'))
+		await disk.write(buf, 0, buf.length, 0);
+		await checkDiskContains(disk, '11111111');
+
+		buf.fill(2);
+		await disk.write(buf, 0, buf.length, 4);
+		await checkDiskContains(disk, '111122222222');
+
+		buf.fill(3);
+		await disk.write(buf, 0, buf.length, 8);
+		await checkDiskContains(disk, '1111222233333333');
+
+		buf.fill(4);
+		await disk.write(buf, 0, buf.length, 24);
+		await checkDiskContains(disk, '11112222333333330000000044444444');
+
+		buf.fill(5);
+		await disk.write(buf, 0, 2, 3);
+		await checkDiskContains(disk, '11155222333333330000000044444444');
+
 		// Test disk readable stream:
-		.then(() => {
-			return disk.getStream();
-		})
-		.then((stream) => {
-			return streamToBuffer(stream);
-		})
-		.then((buffer) => {
-			const expectedFull = createBuffer(
-				'11155222333333330000000044444444',
-				DISK_SIZE,
-			);
-			assert(buffer.equals(expectedFull));
-		})
+		const buffer1 = await streamToBuffer(await disk.getStream());
+		const expected1 = createBuffer('11155222333333330000000044444444', DISK_SIZE);
+		assert(buffer1.equals(expected1));
+
 		// Test getStream with start position
-		.then(() => {
-			return disk.getStream(3);
-		})
-		.then((stream) => {
-			return streamToBuffer(stream);
-		})
-		.then((buffer) => {
-			const expectedFull = createBuffer(
-				'55222333333330000000044444444',
-				DISK_SIZE - 3,
-			);
-			assert(buffer.equals(expectedFull));
-		})
+		const buffer2 = await streamToBuffer(await disk.getStream(3));
+		const expected2 = createBuffer('55222333333330000000044444444', DISK_SIZE - 3);
+		assert(buffer2.equals(expected2));
+
 		// Test getStream with start position and length
-		.then(() => {
-			return disk.getStream(3, 4);
-		})
-		.then((stream) => {
-			return streamToBuffer(stream);
-		})
-		.then((buffer) => {
-			const expectedFull = createBuffer('5522');
-			assert(buffer.equals(expectedFull));
-		})
-		//
-		.then(() => {
-			buf.fill(6);
-			return disk.write(buf, 0, 5, 2);
-		})
-		.then(checkDiskContains(disk, '11666662333333330000000044444444'))
-		.then(() => {
-			buf.fill(7);
-			return disk.write(buf, 0, 2, 30);
-		})
-		.then(checkDiskContains(disk, '11666662333333330000000044444477'))
-		.then(() => {
-			buf.fill(8);
-			return disk.write(buf, 0, 8, 14);
-		})
-		.then(checkDiskContains(disk, '11666662333333888888880044444477'))
-		.then(() => {
-			buf.fill(9);
-			return disk.write(buf, 0, 8, 6);
-		})
-		.then(checkDiskContains(disk, '11666699999999888888880044444477'))
-		.then(() => {
-			const discarded = disk.getDiscardedChunks();
-			assert.strictEqual(discarded.length, 2);
-			assert.strictEqual(discarded[0].start, 22);
-			assert.strictEqual(discarded[0].end, 23);
-			assert.strictEqual(discarded[1].start, 32);
-			assert.strictEqual(discarded[1].end, 10239);
-			return disk.getBlockMap(1, true);
-		})
-		.then((blockmap) => {
-			const firstRange = '1166669999999988888888';
-			const secondRange = '44444477';
-			assert.strictEqual(
-				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange)),
-			);
-			assert.strictEqual(
-				blockmap.ranges[1].checksum,
-				sha256(createBuffer(secondRange)),
-			);
-			return disk.getBlockMap(2, true);
-		})
-		.then((blockmap) => {
-			const firstRange = '1166669999999988888888';
-			const secondRange = '44444477';
-			assert.strictEqual(
-				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange)),
-			);
-			assert.strictEqual(
-				blockmap.ranges[1].checksum,
-				sha256(createBuffer(secondRange)),
-			);
-			return disk.getBlockMap(3, true);
-		})
-		.then((blockmap) => {
-			const firstRange = '116666999999998888888800444444770';
-			assert.strictEqual(
-				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange)),
-			);
-			return disk.getBlockMap(4, true);
-		})
-		.then((blockmap) => {
-			const firstRange = '11666699999999888888880044444477';
-			assert.strictEqual(
-				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange)),
-			);
-			return disk.getBlockMap(5, true);
-		})
-		.then((blockmap) => {
-			const firstRange = '11666699999999888888880044444477000';
-			assert.strictEqual(
-				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange)),
-			);
-			return disk.getBlockMap(6, true);
-		})
-		.then((blockmap) => {
-			const firstRange = '116666999999998888888800444444770000';
-			assert.strictEqual(
-				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange)),
-			);
-			return disk.getBlockMap(7, true);
-		})
-		.then((blockmap) => {
-			const firstRange = '11666699999999888888880044444477000';
-			assert.strictEqual(
-				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange)),
-			);
-			return disk.getBlockMap(8, true);
-		})
-		.then((blockmap) => {
-			const firstRange = '11666699999999888888880044444477';
-			assert.strictEqual(
-				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange)),
-			);
-			return disk.getBlockMap(9, true);
-		})
-		.then((blockmap) => {
-			const firstRange = '116666999999998888888800444444770000';
-			assert.strictEqual(
-				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange)),
-			);
-			return disk.getBlockMap(10, true);
-		})
-		.then((blockmap) => {
-			const firstRange = '1166669999999988888888004444447700000000';
-			assert.strictEqual(
-				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange)),
-			);
-			return disk.getBlockMap(11, true);
-		})
-		.then((blockmap) => {
-			const firstRange = '116666999999998888888800444444770';
-			assert.strictEqual(
-				blockmap.ranges[0].checksum,
-				sha256(createBuffer(firstRange)),
-			);
-		});
+		const buffer3 = await streamToBuffer(await disk.getStream(3, 4));
+		const expected3 = createBuffer('5522');
+		assert(buffer3.equals(expected3));
+
+		buf.fill(6);
+		await disk.write(buf, 0, 5, 2);
+		await checkDiskContains(disk, '11666662333333330000000044444444');
+
+		buf.fill(7);
+		await disk.write(buf, 0, 2, 30);
+		await checkDiskContains(disk, '11666662333333330000000044444477');
+
+		buf.fill(8);
+		await disk.write(buf, 0, 8, 14);
+		await checkDiskContains(disk, '11666662333333888888880044444477');
+
+		buf.fill(9);
+		await disk.write(buf, 0, 8, 6);
+		await checkDiskContains(disk, '11666699999999888888880044444477');
+
+		const discarded = disk.getDiscardedChunks();
+		assert.strictEqual(discarded.length, 2);
+		assert.strictEqual(discarded[0].start, 22);
+		assert.strictEqual(discarded[0].end, 23);
+		assert.strictEqual(discarded[1].start, 32);
+		assert.strictEqual(discarded[1].end, 10239);
+
+		const blockmap1 = await disk.getBlockMap(1, true);
+		assert.strictEqual(blockmap1.ranges.length, 2);
+		assert.strictEqual(blockmap1.ranges[0].checksum, sha256(createBuffer('1166669999999988888888')));
+		assert.strictEqual(blockmap1.ranges[1].checksum, sha256(createBuffer('44444477')));
+
+		const blockmap2 = await disk.getBlockMap(2, true);
+		assert.strictEqual(blockmap2.ranges.length, 2);
+		assert.strictEqual(blockmap2.ranges[0].checksum, sha256(createBuffer('1166669999999988888888')));
+		assert.strictEqual(blockmap2.ranges[1].checksum, sha256(createBuffer('44444477')));
+
+		const blockmap3 = await disk.getBlockMap(3, true);
+		assert.strictEqual(blockmap3.ranges.length, 1);
+		assert.strictEqual(blockmap3.ranges[0].checksum, sha256(createBuffer('116666999999998888888800444444770')));
+
+		const blockmap4 = await disk.getBlockMap(4, true);
+		assert.strictEqual(blockmap4.ranges.length, 1);
+		assert.strictEqual(blockmap4.ranges[0].checksum, sha256(createBuffer('11666699999999888888880044444477')));
+
+		const blockmap5 = await disk.getBlockMap(5, true);
+		assert.strictEqual(blockmap5.ranges.length, 1);
+		assert.strictEqual(blockmap5.ranges[0].checksum, sha256(createBuffer('11666699999999888888880044444477000')));
+
+		const blockmap6 = await disk.getBlockMap(6, true);
+		assert.strictEqual(blockmap6.ranges.length, 1);
+		assert.strictEqual(blockmap6.ranges[0].checksum, sha256(createBuffer('116666999999998888888800444444770000')));
+
+		const blockmap7 = await disk.getBlockMap(7, true);
+		assert.strictEqual(blockmap7.ranges.length, 1);
+		assert.strictEqual(blockmap7.ranges[0].checksum, sha256(createBuffer('11666699999999888888880044444477000')));
+
+		const blockmap8 = await disk.getBlockMap(8, true);
+		assert.strictEqual(blockmap8.ranges.length, 1);
+		assert.strictEqual(blockmap8.ranges[0].checksum, sha256(createBuffer('11666699999999888888880044444477')));
+
+		const blockmap9 = await disk.getBlockMap(9, true);
+		assert.strictEqual(blockmap9.ranges.length, 1);
+		assert.strictEqual(blockmap9.ranges[0].checksum, sha256(createBuffer('116666999999998888888800444444770000')));
+
+		const blockmap10 = await disk.getBlockMap(10, true);
+		assert.strictEqual(blockmap10.ranges.length, 1);
+		assert.strictEqual(blockmap10.ranges[0].checksum, sha256(createBuffer('1166669999999988888888004444447700000000')));
+
+		const blockmap11 = await disk.getBlockMap(11, true);
+		assert.strictEqual(blockmap11.ranges.length, 1);
+		assert.strictEqual(blockmap11.ranges[0].checksum, sha256(createBuffer('116666999999998888888800444444770')));
 	};
 
-	it('copy on write mode should properly record overlapping writes', () => {
-		return testOnAllDisks(overlappingWrites);
+	it('copy on write mode should properly record overlapping writes', async () => {
+		await testOnAllDisks(overlappingWrites);
 	});
 });

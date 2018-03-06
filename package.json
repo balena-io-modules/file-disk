@@ -21,7 +21,7 @@
     "clean": "rm -rf build",
     "compile": "npm run clean && tsc",
     "prepublishOnly": "npm run compile",
-    "pretest": "resin-lint --typescript 1 src/*.ts test/*.ts && ./test/start_minio.sh",
+    "pretest": "resin-lint --typescript src/*.ts test/*.ts && ./test/start_minio.sh",
     "test": "mocha --require ts-node/register test/*.ts; ./test/stop_minio.sh"
   },
   "files": [

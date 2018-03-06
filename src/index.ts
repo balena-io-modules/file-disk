@@ -69,7 +69,7 @@ class DiskTransformStream extends Transform {
 		while (this.currentChunk) {
 			if (intervalIntersection(this.currentChunk.interval(), interval)) {
 				const buf = this.currentChunk.data();
-				const startShift = this.currentChunk.start - start;
+				const startShift = this.currentChunk.offset - start;
 				const endShift = this.currentChunk.end - end;
 				const sourceStart = (startShift < 0) ? -startShift : 0;
 				const sourceEnd = buf.length - Math.max(endShift, 0);
@@ -208,10 +208,10 @@ export abstract class Disk {
 		let insertAt = 0;
 		for (let i = 0; i < this.knownChunks.length; i++) {
 			const other = this.knownChunks[i];
-			if (other.start > chunk.end) {
+			if (other.offset > chunk.end) {
 				break;
 			}
-			if (other.start < chunk.start) {
+			if (other.offset < chunk.offset) {
 				insertAt = i + 1;
 			} else {
 				insertAt = i;
@@ -256,14 +256,14 @@ export abstract class Disk {
 		const readPlan: ReadPlan = [];
 		let chunk;
 		for (chunk of intersections) {
-			if (offset < chunk.start) {
-				readPlan.push([offset, chunk.start - 1]);
+			if (offset < chunk.offset) {
+				readPlan.push([ offset, chunk.offset - 1 ]);
 			}
 			readPlan.push(chunk);
 			offset = chunk.end + 1;
 		}
 		if (chunk && (end > chunk.end)) {
-			readPlan.push([chunk.end + 1, end]);
+			readPlan.push([ chunk.end + 1, end ]);
 		}
 		return readPlan;
 	}

@@ -92,7 +92,7 @@ describe('BufferDiskChunk', () => {
 		it('0-3, slice 0-2', () => {
 			const chunk = new BufferDiskChunk(Buffer.alloc(4), 0);
 			const slice = chunk.slice(0, 2);
-			assert.strictEqual(slice.start, 0);
+			assert.strictEqual(slice.offset, 0);
 			assert.strictEqual(slice.end, 2);
 			assert.strictEqual(slice.buffer.length, 3);
 		});
@@ -100,7 +100,7 @@ describe('BufferDiskChunk', () => {
 		it('4-7, slice 5-6', () => {
 			const chunk = new BufferDiskChunk(Buffer.alloc(4), 4);
 			const slice = chunk.slice(5, 6);
-			assert.strictEqual(slice.start, 5);
+			assert.strictEqual(slice.offset, 5);
 			assert.strictEqual(slice.end, 6);
 			assert.strictEqual(slice.buffer.length, 2);
 		});
@@ -255,9 +255,9 @@ describe('file-disk', () => {
 
 		const discarded = disk.getDiscardedChunks();
 		assert.strictEqual(discarded.length, 2);
-		assert.strictEqual(discarded[0].start, 22);
+		assert.strictEqual(discarded[0].offset, 22);
 		assert.strictEqual(discarded[0].end, 23);
-		assert.strictEqual(discarded[1].start, 32);
+		assert.strictEqual(discarded[1].offset, 32);
 		assert.strictEqual(discarded[1].end, 10239);
 
 		const blockmap1 = await disk.getBlockMap(1, true);

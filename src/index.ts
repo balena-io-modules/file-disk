@@ -14,31 +14,42 @@ const MIN_HIGH_WATER_MARK = 16;
 const DEFAULT_HIGH_WATER_MARK = 16384;
 
 export class DiskStream extends Readable {
+	private isReading: boolean = false;
+
 	constructor(private readonly disk: Disk, private readonly capacity: number, highWaterMark: number, private position: number) {
 		super({ highWaterMark: Math.max(highWaterMark, MIN_HIGH_WATER_MARK) });
 	}
 
-	_read(size: number): void {
-		const length = Math.min(size, this.capacity - this.position);
-		if (length <= 0) {
-			this.push(null);
+	private async __read(size: number): Promise<void> {
+		if (this.isReading) {
+			// We're already reading, return.
 			return;
 		}
-		this.disk.read(
-			Buffer.allocUnsafe(length),
-			0,  // buffer offset
-			length,
-			this.position,  // disk offset
-		)
-		.then(({ bytesRead, buffer }) => {
-			this.position += bytesRead;
-			if (this.push(buffer)) {
-				this._read(size);
+		this.isReading = true;
+		while (this.isReading) {
+			// Don't read out of bounds
+			const length = Math.min(size, this.capacity - this.position);
+			if (length <= 0) {
+				// Nothing left to read: push null to signal end of stream.
+				this.isReading = this.push(null);
+				return;
 			}
-		})
-		.catch((err) => {
-			this.emit('error', err);
-		});
+			let bytesRead: number;
+			let buffer: Buffer;
+			try {
+				({ bytesRead, buffer } = await this.disk.read(Buffer.allocUnsafe(length), 0, length, this.position));
+			} catch (err) {
+				this.emit('error', err);
+				return;
+			}
+			this.position += bytesRead;
+			// this.push() returns true if we need to continue reading.
+			this.isReading = this.push(buffer);
+		}
+	}
+
+	_read(size: number): void {
+		this.__read(size);
 	}
 }
 

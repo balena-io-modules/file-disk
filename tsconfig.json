@@ -5,6 +5,7 @@
 		"typeRoots": ["typings", "node_modules/@types"],
 		"outDir": "build",
 		"declaration": true,
+		"sourceMap": true,
 		"module": "commonjs"
 	},
 	"exclude": [ "test/*.ts" ]

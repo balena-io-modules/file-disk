@@ -1,6 +1,6 @@
 {
   "name": "file-disk",
-  "version": "4.1.1",
+  "version": "4.1.2",
   "description": "Handles reads / writes on disk image files.",
   "author": "Petros Angelatos <petrosagg@resin.io>",
   "contributors": [
@@ -26,8 +26,10 @@
   },
   "files": [
     "build/*.js",
+    "build/*.js.map",
     "build/*.d.ts"
   ],
+  "types": "build/index.d.ts",
   "devDependencies": {
     "@types/bluebird": "^3.5.20",
     "@types/mocha": "^2.2.48",

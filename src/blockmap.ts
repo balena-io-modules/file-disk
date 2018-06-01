@@ -11,11 +11,11 @@ const getNotDiscardedChunks = (disk: Disk, capacity: number): Interval[] => {
 	const discardedChunks = disk.getDiscardedChunks();
 	let lastStart = 0;
 	for (const discardedChunk of discardedChunks) {
-		chunks.push([lastStart, discardedChunk.start - 1]);
+		chunks.push([ lastStart, discardedChunk.offset - 1 ]);
 		lastStart = discardedChunk.end + 1;
 	}
 	if (lastStart < capacity) {
-		chunks.push([lastStart, capacity - 1]);
+		chunks.push([ lastStart, capacity - 1 ]);
 	}
 	return chunks;
 };

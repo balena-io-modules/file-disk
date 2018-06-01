@@ -25,16 +25,20 @@ Subclasses must implement 2 methods:
 */
 export abstract class DiskChunk {
 	constructor(
-		public readonly start: number,  // position in file
-		public readonly end: number,    // position of the last byte in file (included)
+		public readonly offset: number,  // position in file
+		public readonly length: number,
 	) {}
 
 	abstract slice(start: number, end: number): DiskChunk;
 
 	abstract data(): Buffer;
 
+	get end() {  // position of the last byte in file (included)
+		return this.offset + this.length - 1;
+	}
+
 	interval(): Interval {
-		return [ this.start, this.end ];
+		return [ this.offset, this.end ];
 	}
 
 	intersection(other: DiskChunk): Interval | null {
@@ -46,7 +50,7 @@ export abstract class DiskChunk {
 	}
 
 	includedIn(other: DiskChunk): boolean {
-		return ((this.start >= other.start) && (this.end <= other.end));
+		return ((this.offset >= other.offset) && (this.end <= other.end));
 	}
 
 	cut(other: DiskChunk): DiskChunk[] {
@@ -56,8 +60,8 @@ export abstract class DiskChunk {
 		if (intersection === null) {
 			throw new Error('`other` must be an overlapping `DiskChunk`');
 		}
-		if (intersection[0] > this.start) {
-			result.push(this.slice(this.start, intersection[0] - 1));
+		if (intersection[0] > this.offset) {
+			result.push(this.slice(this.offset, intersection[0] - 1));
 		}
 		if (this.end > intersection[1]) {
 			result.push(this.slice(intersection[1] + 1, this.end));
@@ -73,7 +77,7 @@ export class BufferDiskChunk extends DiskChunk {
 	private readonly buffer: Buffer;
 
 	constructor(buffer: Buffer, offset: number, copy: boolean = true) {
-		super(offset, offset + buffer.length - 1);
+		super(offset, buffer.length);
 		if (copy) {
 			this.buffer = Buffer.from(buffer);
 		} else {
@@ -87,7 +91,7 @@ export class BufferDiskChunk extends DiskChunk {
 
 	slice(start: number, end: number): BufferDiskChunk {
 		// start and end are relative to the Disk
-		const startInBuffer = start - this.start;
+		const startInBuffer = start - this.offset;
 		return new BufferDiskChunk(
 			this.buffer.slice(startInBuffer, startInBuffer + end - start + 1),
 			start,
@@ -101,12 +105,8 @@ export class BufferDiskChunk extends DiskChunk {
 `DiscardDiskChunk.data()` allocates a `Buffer` of the size of the chunk filled with zeros.
 */
 export class DiscardDiskChunk extends DiskChunk {
-	constructor(offset: number, length: number) {
-		super(offset, offset + length - 1);
-	}
-
 	data(): Buffer {
-		return Buffer.alloc(this.end - this.start + 1);
+		return Buffer.alloc(this.length);
 	}
 
 	slice(start: number, end: number): DiscardDiskChunk {

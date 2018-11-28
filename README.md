@@ -54,18 +54,7 @@ contain anything else than zeros on the disk.
 
 ### S3Disk
 
-`S3Disk` acts like `FileDisk` except it reads the image file from S3 instead of
-the filesystem. `S3Disk` has `readOnly` and `recordWrites` enabled. This can
-not be changed.
-
-`new S3Disk(s3, bucket, key, recordReads, discardIsZero=true)`
-
- - `s3` is an s3 connection.
- - `bucket` is the S3 bucket to use.
- - `key` is the key (file name) to use in the bucket.
-
-For more information about S3Disk parameters see
-[the aws documentation](http://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html)
+`S3Disk` has been moved to a [separate repository](https://github.com/balena-io-modules/s3-disk).
 
 ## Examples
 

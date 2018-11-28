@@ -21,8 +21,8 @@
     "clean": "rm -rf build",
     "compile": "npm run clean && tsc",
     "prepublishOnly": "npm run compile",
-    "pretest": "resin-lint --typescript src/*.ts test/*.ts && ./test/start_minio.sh",
-    "test": "mocha --require ts-node/register test/*.ts; ./test/stop_minio.sh"
+    "pretest": "resin-lint --typescript src/*.ts test/*.ts",
+    "test": "mocha --require ts-node/register test/*.ts"
   },
   "files": [
     "build/*.js",
@@ -40,7 +40,6 @@
     "typescript": "^2.7.2"
   },
   "dependencies": {
-    "aws-sdk": "^2.39.0",
     "blockmap": "^3.0.0",
     "bluebird": "^3.5.1"
   }

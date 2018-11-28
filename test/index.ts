@@ -1,26 +1,18 @@
 import * as assert from 'assert';
-import * as aws from 'aws-sdk';
 import * as Bluebird from 'bluebird';
 import { createHash } from 'crypto';
 import * as fs from 'fs';
 import { afterEach, beforeEach, describe } from 'mocha';
 import * as path from 'path';
 
-import { FileDisk, openFile, S3Disk } from '../src';
+import { FileDisk, openFile } from '../src';
 import { BufferDiskChunk } from '../src/diskchunk';
 
-const BUCKET_NAME = 'fixtures';
+const FIXTURES_PATH = 'fixtures';
 const FILE_NAME = 'zeros';
-const DISK_PATH = path.join(__dirname, BUCKET_NAME, FILE_NAME);
+const DISK_PATH = path.join(__dirname, FIXTURES_PATH, FILE_NAME);
 const TMP_DISK_PATH = DISK_PATH + '-tmp';
 const DISK_SIZE = 10240;
-const S3 = new aws.S3({
-	accessKeyId: 'access_key',
-	secretAccessKey: 'secret_key',
-	endpoint: 'http://0.0.0.0:9042',
-	s3ForcePathStyle: true,
-	sslEnabled: false,
-});
 
 const streamToBuffer = (stream) => {
 	return new Bluebird((resolve, reject) => {
@@ -63,14 +55,6 @@ const createCowDisk2 = (fd) => {
 	return new FileDisk(fd, true, true, false, false);
 };
 
-const createS3CowDisk = () => {
-	// read only
-	// record reads
-	// record writes
-	// discarded chunks are zeros
-	return new S3Disk(S3, BUCKET_NAME, FILE_NAME, true, true);
-};
-
 const testOnAllDisks = (fn) => {
 	const files = [
 		openFile(DISK_PATH, 'r'),
@@ -81,7 +65,6 @@ const testOnAllDisks = (fn) => {
 			createCowDisk(fds[0]),
 			createCowDisk2(fds[0]),
 			createDisk(fds[1]),
-			createS3CowDisk(),
 		];
 		return Bluebird.all(disks.map(fn));
 	});
@@ -310,12 +293,7 @@ describe('file-disk', () => {
 		if (disk.readOnly && disk.recordWrites) {  // This test only makes sense for disks that record writes.
 			const diskStream = await disk.getStream();
 			const buf1 = await streamToBuffer(diskStream);
-			let originalImageStream;
-			if (disk instanceof S3Disk) {
-				originalImageStream = S3.getObject({ Bucket: BUCKET_NAME, Key: FILE_NAME }).createReadStream();
-			} else {
-				originalImageStream = fs.createReadStream(DISK_PATH);
-			}
+			const originalImageStream = fs.createReadStream(DISK_PATH);
 			const transform = disk.getTransformStream();
 			originalImageStream.pipe(transform);
 			const buf2 = await streamToBuffer(transform);

@@ -2,21 +2,21 @@
   "name": "file-disk",
   "version": "4.1.3",
   "description": "Handles reads / writes on disk image files.",
-  "author": "Petros Angelatos <petrosagg@resin.io>",
+  "author": "Petros Angelatos <petrosagg@balena.io>",
   "contributors": [
-    "Alexis Svinartchouk <alexis@resin.io>",
-    "Petros Angelatos <petrosagg@resin.io>"
+    "Alexis Svinartchouk <alexis@balena.io>",
+    "Petros Angelatos <petrosagg@balena.io>"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/resin-io-modules/file-disk"
+    "url": "https://github.com/balena-io-modules/file-disk"
   },
   "bugs": {
-    "url": "https://github.com/resin-io-modules/file-disk/issues"
+    "url": "https://github.com/balena-io-modules/file-disk/issues"
   },
   "license": "Apache-2.0",
   "main": "build/index.js",
-  "homepage": "https://github.com/resin-io-modules/file-disk",
+  "homepage": "https://github.com/balena-io-modules/file-disk",
   "scripts": {
     "clean": "rm -rf build",
     "compile": "npm run clean && tsc",

@@ -1,7 +1,7 @@
 # file-disk
 Handles reads / writes on disk image files.
 
-[![Build Status](https://travis-ci.org/resin-io-modules/file-disk.svg?branch=master)](https://travis-ci.org/resin-io-modules/file-disk)
+[![Build Status](https://travis-ci.org/balena-io-modules/file-disk.svg?branch=master)](https://travis-ci.org/balena-io-modules/file-disk)
 
 ## API
 
@@ -47,7 +47,7 @@ has a `start` and `end` properties. `end` position is inclusive.
 
 `FileDisk.getBlockMap(blockSize, calculateChecksums`: `Promise<blockmap.BlockMap>`
  - using the disk's discarded chunks and the given blockSize, it returns a Promise
-of a [`BlockMap`](https://github.com/resin-io-modules/blockmap).
+of a [`BlockMap`](https://github.com/balena-io-modules/blockmap).
 Be careful to how you use `Disk`'s `discardIsZero` option as it may change the
 blockmap ranges checksums if discarded regions not aligned with `blockSize`
 contain anything else than zeros on the disk.

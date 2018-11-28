@@ -25,8 +25,8 @@ Subclasses must implement 2 methods:
 */
 export abstract class DiskChunk {
 	constructor(
-		public readonly start: number,  // position in file
-		public readonly end: number,    // position of the last byte in file (included)
+		public readonly start: number, // position in file
+		public readonly end: number, // position of the last byte in file (included)
 	) {}
 
 	abstract slice(start: number, end: number): DiskChunk;
@@ -34,7 +34,7 @@ export abstract class DiskChunk {
 	abstract data(): Buffer;
 
 	interval(): Interval {
-		return [ this.start, this.end ];
+		return [this.start, this.end];
 	}
 
 	intersection(other: DiskChunk): Interval | null {
@@ -42,11 +42,11 @@ export abstract class DiskChunk {
 	}
 
 	intersects(other: DiskChunk): boolean {
-		return (this.intersection(other) !== null);
+		return this.intersection(other) !== null;
 	}
 
 	includedIn(other: DiskChunk): boolean {
-		return ((this.start >= other.start) && (this.end <= other.end));
+		return this.start >= other.start && this.end <= other.end;
 	}
 
 	cut(other: DiskChunk): DiskChunk[] {

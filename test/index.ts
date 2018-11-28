@@ -14,61 +14,63 @@ const DISK_PATH = path.join(__dirname, FIXTURES_PATH, FILE_NAME);
 const TMP_DISK_PATH = DISK_PATH + '-tmp';
 const DISK_SIZE = 10240;
 
-const streamToBuffer = (stream) => {
-	return new Bluebird((resolve, reject) => {
-		const chunks = [];
-		stream.on('error', reject);
-		stream.on('data', chunks.push.bind(chunks));
-		stream.on('end', () => {
-			resolve(Buffer.concat(chunks));
-		});
-	});
-};
+async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+	return await new Promise(
+		(resolve: (buffer: Buffer) => void, reject: (error: Error) => void) => {
+			const chunks: Buffer[] = [];
+			stream.on('error', reject);
+			stream.on('data', chunks.push.bind(chunks));
+			stream.on('end', () => {
+				resolve(Buffer.concat(chunks));
+			});
+		},
+	);
+}
 
-const sha256 = (buffer) => {
+function sha256(buffer: Buffer): string {
 	const hash = createHash('sha256');
 	hash.update(buffer);
 	return hash.digest('hex');
-};
+}
 
-const createDisk = (fd) => {
+function createDisk(fd: number): FileDisk {
 	// read write
 	// don't record reads
 	// don't record writes
 	// discarded chunks are zeros
 	return new FileDisk(fd);
-};
+}
 
-const createCowDisk = (fd) => {
+function createCowDisk(fd: number): FileDisk {
 	// read only
 	// record writes
 	// record reads
 	// discarded chunks are zeros
 	return new FileDisk(fd, true, true, true, true);
-};
+}
 
-const createCowDisk2 = (fd) => {
+function createCowDisk2(fd: number): FileDisk {
 	// read only
 	// record writes
 	// don't record reads
 	// read discarded chunks from the disk anyway
 	return new FileDisk(fd, true, true, false, false);
-};
+}
 
-const testOnAllDisks = (fn) => {
-	const files = [
+async function testOnAllDisks(
+	fn: (disk: FileDisk) => Promise<void>,
+): Promise<void> {
+	await Bluebird.using(
 		openFile(DISK_PATH, 'r'),
 		openFile(TMP_DISK_PATH, 'r+'),
-	];
-	return Bluebird.using(files, (fds) => {
-		const disks = [
-			createCowDisk(fds[0]),
-			createCowDisk2(fds[0]),
-			createDisk(fds[1]),
-		];
-		return Bluebird.all(disks.map(fn));
-	});
-};
+		async (fileFd, tmpFileFd) => {
+			await Bluebird.map(
+				[createCowDisk(fileFd), createCowDisk2(fileFd), createDisk(tmpFileFd)],
+				fn,
+			);
+		},
+	);
+}
 
 describe('BufferDiskChunk', () => {
 	describe('slice', () => {
@@ -77,6 +79,7 @@ describe('BufferDiskChunk', () => {
 			const slice = chunk.slice(0, 2);
 			assert.strictEqual(slice.start, 0);
 			assert.strictEqual(slice.end, 2);
+			// @ts-ignore (BufferDiskChunk.buffer is private)
 			assert.strictEqual(slice.buffer.length, 3);
 		});
 
@@ -85,33 +88,34 @@ describe('BufferDiskChunk', () => {
 			const slice = chunk.slice(5, 6);
 			assert.strictEqual(slice.start, 5);
 			assert.strictEqual(slice.end, 6);
+			// @ts-ignore (BufferDiskChunk.buffer is private)
 			assert.strictEqual(slice.buffer.length, 2);
 		});
 	});
 });
 
 describe('file-disk', () => {
-	beforeEach((done) => {
+	beforeEach(done => {
 		// Make a copy of the disk image
 		fs.createReadStream(DISK_PATH)
-		.pipe(fs.createWriteStream(TMP_DISK_PATH))
-		.on('close', done);
+			.pipe(fs.createWriteStream(TMP_DISK_PATH))
+			.on('close', done);
 	});
 
 	afterEach(() => {
 		fs.unlinkSync(TMP_DISK_PATH);
 	});
 
-	const testGetCapacity = async (disk) => {
+	async function testGetCapacity(disk: FileDisk) {
 		const size = await disk.getCapacity();
 		assert.strictEqual(size, DISK_SIZE);
-	};
+	}
 
 	it('getCapacity should return the disk size', async () => {
 		await testOnAllDisks(testGetCapacity);
 	});
 
-	const readRespectsLength = async (disk) => {
+	async function readRespectsLength(disk: FileDisk) {
 		const buf = Buffer.allocUnsafe(1024);
 		buf.fill(1);
 		const result = await disk.read(buf, 0, 10, 0);
@@ -124,13 +128,13 @@ describe('file-disk', () => {
 		rest.fill(1);
 		// the rest was not updated: ones
 		assert(result.buffer.slice(10).equals(rest));
-	};
+	}
 
 	it('read should respect the length parameter', async () => {
 		await testOnAllDisks(readRespectsLength);
 	});
 
-	const writeRespectsLength = async (disk) => {
+	async function writeRespectsLength(disk: FileDisk) {
 		const buf = Buffer.alloc(1024);
 		buf.fill(1);
 		await disk.write(buf, 0, 10, 0);
@@ -143,13 +147,13 @@ describe('file-disk', () => {
 		const rest = Buffer.alloc(1024 - 10);
 		// the rest was not written: zeros
 		assert(result.buffer.slice(10).equals(rest));
-	};
+	}
 
 	it('write should respect the length parameter', async () => {
 		await testOnAllDisks(writeRespectsLength);
 	});
 
-	const shouldReadAndWrite = async (disk) => {
+	async function shouldReadAndWrite(disk: FileDisk) {
 		const buf = Buffer.allocUnsafe(1024);
 		buf.fill(1);
 		const writeResult = await disk.write(buf, 0, buf.length, 0);
@@ -159,29 +163,29 @@ describe('file-disk', () => {
 		assert.strictEqual(readResult.bytesRead, readResult.buffer.length);
 		assert(buf.equals(readResult.buffer));
 		await disk.flush();
-	};
+	}
 
 	it('should write and read', async () => {
 		await testOnAllDisks(shouldReadAndWrite);
 	});
 
-	const createBuffer = (pattern, size) => {
+	function createBuffer(pattern: string, size?: number): Buffer {
 		// Helper for checking disk contents.
-		size = (size === undefined) ? pattern.length : size;
+		size = size === undefined ? pattern.length : size;
 		const buffer = Buffer.alloc(size);
 		Buffer.from(Array.from(pattern).map(Number)).copy(buffer);
 		return buffer;
-	};
+	}
 
-	const checkDiskContains = async (disk, pattern) => {
+	async function checkDiskContains(disk: FileDisk, pattern: string) {
 		// Helper for checking disk contents.
 		const size = 32;
 		const expected = createBuffer(pattern, size);
 		const { buffer } = await disk.read(Buffer.allocUnsafe(size), 0, size, 0);
 		assert(buffer.equals(expected));
-	};
+	}
 
-	const overlappingWrites = async (disk) => {
+	async function overlappingWrites(disk: FileDisk) {
 		const buf = Buffer.allocUnsafe(8);
 		await disk.discard(0, DISK_SIZE);
 
@@ -207,12 +211,18 @@ describe('file-disk', () => {
 
 		// Test disk readable stream:
 		const buffer1 = await streamToBuffer(await disk.getStream());
-		const expected1 = createBuffer('11155222333333330000000044444444', DISK_SIZE);
+		const expected1 = createBuffer(
+			'11155222333333330000000044444444',
+			DISK_SIZE,
+		);
 		assert(buffer1.equals(expected1));
 
 		// Test getStream with start position
 		const buffer2 = await streamToBuffer(await disk.getStream(3));
-		const expected2 = createBuffer('55222333333330000000044444444', DISK_SIZE - 3);
+		const expected2 = createBuffer(
+			'55222333333330000000044444444',
+			DISK_SIZE - 3,
+		);
 		assert(buffer2.equals(expected2));
 
 		// Test getStream with start position and length
@@ -245,52 +255,92 @@ describe('file-disk', () => {
 
 		const blockmap1 = await disk.getBlockMap(1, true);
 		assert.strictEqual(blockmap1.ranges.length, 2);
-		assert.strictEqual(blockmap1.ranges[0].checksum, sha256(createBuffer('1166669999999988888888')));
-		assert.strictEqual(blockmap1.ranges[1].checksum, sha256(createBuffer('44444477')));
+		assert.strictEqual(
+			blockmap1.ranges[0].checksum,
+			sha256(createBuffer('1166669999999988888888')),
+		);
+		assert.strictEqual(
+			blockmap1.ranges[1].checksum,
+			sha256(createBuffer('44444477')),
+		);
 
 		const blockmap2 = await disk.getBlockMap(2, true);
 		assert.strictEqual(blockmap2.ranges.length, 2);
-		assert.strictEqual(blockmap2.ranges[0].checksum, sha256(createBuffer('1166669999999988888888')));
-		assert.strictEqual(blockmap2.ranges[1].checksum, sha256(createBuffer('44444477')));
+		assert.strictEqual(
+			blockmap2.ranges[0].checksum,
+			sha256(createBuffer('1166669999999988888888')),
+		);
+		assert.strictEqual(
+			blockmap2.ranges[1].checksum,
+			sha256(createBuffer('44444477')),
+		);
 
 		const blockmap3 = await disk.getBlockMap(3, true);
 		assert.strictEqual(blockmap3.ranges.length, 1);
-		assert.strictEqual(blockmap3.ranges[0].checksum, sha256(createBuffer('116666999999998888888800444444770')));
+		assert.strictEqual(
+			blockmap3.ranges[0].checksum,
+			sha256(createBuffer('116666999999998888888800444444770')),
+		);
 
 		const blockmap4 = await disk.getBlockMap(4, true);
 		assert.strictEqual(blockmap4.ranges.length, 1);
-		assert.strictEqual(blockmap4.ranges[0].checksum, sha256(createBuffer('11666699999999888888880044444477')));
+		assert.strictEqual(
+			blockmap4.ranges[0].checksum,
+			sha256(createBuffer('11666699999999888888880044444477')),
+		);
 
 		const blockmap5 = await disk.getBlockMap(5, true);
 		assert.strictEqual(blockmap5.ranges.length, 1);
-		assert.strictEqual(blockmap5.ranges[0].checksum, sha256(createBuffer('11666699999999888888880044444477000')));
+		assert.strictEqual(
+			blockmap5.ranges[0].checksum,
+			sha256(createBuffer('11666699999999888888880044444477000')),
+		);
 
 		const blockmap6 = await disk.getBlockMap(6, true);
 		assert.strictEqual(blockmap6.ranges.length, 1);
-		assert.strictEqual(blockmap6.ranges[0].checksum, sha256(createBuffer('116666999999998888888800444444770000')));
+		assert.strictEqual(
+			blockmap6.ranges[0].checksum,
+			sha256(createBuffer('116666999999998888888800444444770000')),
+		);
 
 		const blockmap7 = await disk.getBlockMap(7, true);
 		assert.strictEqual(blockmap7.ranges.length, 1);
-		assert.strictEqual(blockmap7.ranges[0].checksum, sha256(createBuffer('11666699999999888888880044444477000')));
+		assert.strictEqual(
+			blockmap7.ranges[0].checksum,
+			sha256(createBuffer('11666699999999888888880044444477000')),
+		);
 
 		const blockmap8 = await disk.getBlockMap(8, true);
 		assert.strictEqual(blockmap8.ranges.length, 1);
-		assert.strictEqual(blockmap8.ranges[0].checksum, sha256(createBuffer('11666699999999888888880044444477')));
+		assert.strictEqual(
+			blockmap8.ranges[0].checksum,
+			sha256(createBuffer('11666699999999888888880044444477')),
+		);
 
 		const blockmap9 = await disk.getBlockMap(9, true);
 		assert.strictEqual(blockmap9.ranges.length, 1);
-		assert.strictEqual(blockmap9.ranges[0].checksum, sha256(createBuffer('116666999999998888888800444444770000')));
+		assert.strictEqual(
+			blockmap9.ranges[0].checksum,
+			sha256(createBuffer('116666999999998888888800444444770000')),
+		);
 
 		const blockmap10 = await disk.getBlockMap(10, true);
 		assert.strictEqual(blockmap10.ranges.length, 1);
-		assert.strictEqual(blockmap10.ranges[0].checksum, sha256(createBuffer('1166669999999988888888004444447700000000')));
+		assert.strictEqual(
+			blockmap10.ranges[0].checksum,
+			sha256(createBuffer('1166669999999988888888004444447700000000')),
+		);
 
 		const blockmap11 = await disk.getBlockMap(11, true);
 		assert.strictEqual(blockmap11.ranges.length, 1);
-		assert.strictEqual(blockmap11.ranges[0].checksum, sha256(createBuffer('116666999999998888888800444444770')));
+		assert.strictEqual(
+			blockmap11.ranges[0].checksum,
+			sha256(createBuffer('116666999999998888888800444444770')),
+		);
 
 		// Test that disk.getStream() and the original image stream transformed by disk.getTransformStream() return the same streams.
-		if (disk.readOnly && disk.recordWrites) {  // This test only makes sense for disks that record writes.
+		if (disk.readOnly && disk.recordWrites) {
+			// This test only makes sense for disks that record writes.
 			const diskStream = await disk.getStream();
 			const buf1 = await streamToBuffer(diskStream);
 			const originalImageStream = fs.createReadStream(DISK_PATH);
@@ -299,7 +349,7 @@ describe('file-disk', () => {
 			const buf2 = await streamToBuffer(transform);
 			assert(buf1.equals(buf2));
 		}
-	};
+	}
 
 	it('copy on write mode should properly record overlapping writes', async () => {
 		await testOnAllDisks(overlappingWrites);

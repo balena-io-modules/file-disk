@@ -15,7 +15,12 @@ const DEFAULT_HIGH_WATER_MARK = 16384;
 export class DiskStream extends Readable {
 	private isReading: boolean = false;
 
-	constructor(private readonly disk: Disk, private readonly capacity: number, highWaterMark: number, private position: number) {
+	constructor(
+		private readonly disk: Disk,
+		private readonly capacity: number,
+		highWaterMark: number,
+		private position: number,
+	) {
 		super({ highWaterMark: Math.max(highWaterMark, MIN_HIGH_WATER_MARK) });
 	}
 
@@ -36,7 +41,12 @@ export class DiskStream extends Readable {
 			let bytesRead: number;
 			let buffer: Buffer;
 			try {
-				({ bytesRead, buffer } = await this.disk.read(Buffer.allocUnsafe(length), 0, length, this.position));
+				({ bytesRead, buffer } = await this.disk.read(
+					Buffer.allocUnsafe(length),
+					0,
+					length,
+					this.position,
+				));
 			} catch (err) {
 				this.emit('error', err);
 				return;
@@ -75,13 +85,13 @@ class DiskTransformStream extends Transform {
 	public _transform(chunk: Buffer, enc: string, cb: () => void): void {
 		const start: number = this.position;
 		const end: number = start + chunk.length - 1;
-		const interval: Interval = [ start, end ];
+		const interval: Interval = [start, end];
 		while (this.currentChunk) {
 			if (intervalIntersection(this.currentChunk.interval(), interval)) {
 				const buf = this.currentChunk.data();
 				const startShift = this.currentChunk.start - start;
 				const endShift = this.currentChunk.end - end;
-				const sourceStart = (startShift < 0) ? -startShift : 0;
+				const sourceStart = startShift < 0 ? -startShift : 0;
 				const sourceEnd = buf.length - Math.max(endShift, 0);
 				const targetStart = Math.max(startShift, 0);
 				buf.copy(chunk, targetStart, sourceStart, sourceEnd);
@@ -100,18 +110,21 @@ class DiskTransformStream extends Transform {
 
 type ReadPlan = (Interval | DiskChunk)[];
 
-export const openFile = (path: string, flags: string | number, mode?: number): Bluebird.Disposer<number> => {
+export function openFile(
+	path: string,
+	flags: string | number,
+	mode?: number,
+): Bluebird.Disposer<number> {
 	// Opens a file and closes it when you're done using it.
 	// Arguments are the same that for `fs.open()`
 	// Use it with Bluebird's `using`, example:
 	// Bluebird.using(openFile('/some/path', 'r+'), (fd) => {
 	//   doSomething(fd);
 	// });
-	return fs.open(path, flags, mode)
-	.disposer((fd) => {
+	return fs.open(path, flags, mode).disposer(fd => {
 		return fs.close(fd);
 	});
-};
+}
 
 export abstract class Disk {
 	// Subclasses need to implement:
@@ -130,17 +143,31 @@ export abstract class Disk {
 	//   * position: start reading from this offset (defaults to zero)
 	//   * length: read that amount of bytes (defaults to (disk capacity - position))
 	//   * highWaterMark: size of chunks that will be read (default 16384, minimum 16)
-	readonly knownChunks: DiskChunk[] = [];  // sorted list of non overlapping DiskChunks
+	readonly knownChunks: DiskChunk[] = []; // sorted list of non overlapping DiskChunks
 	capacity: number | null = null;
 
-	constructor(public readOnly: boolean = false, public recordWrites: boolean = false, public recordReads: boolean = false, public discardIsZero: boolean = true) {
-	}
+	constructor(
+		public readOnly: boolean = false,
+		public recordWrites: boolean = false,
+		public recordReads: boolean = false,
+		public discardIsZero: boolean = true,
+	) {}
 
 	protected abstract async _getCapacity(): Promise<number>;
 
-	protected abstract async _read(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Promise<fs.ReadResult>;
+	protected abstract async _read(
+		buffer: Buffer,
+		bufferOffset: number,
+		length: number,
+		fileOffset: number,
+	): Promise<fs.ReadResult>;
 
-	protected abstract async _write(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Promise<fs.WriteResult>;
+	protected abstract async _write(
+		buffer: Buffer,
+		bufferOffset: number,
+		length: number,
+		fileOffset: number,
+	): Promise<fs.WriteResult>;
 
 	protected abstract async _flush(): Promise<void>;
 
@@ -149,12 +176,22 @@ export abstract class Disk {
 		return new DiskTransformStream(this);
 	}
 
-	public async read(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Promise<fs.ReadResult> {
+	public async read(
+		buffer: Buffer,
+		bufferOffset: number,
+		length: number,
+		fileOffset: number,
+	): Promise<fs.ReadResult> {
 		const plan = this.createReadPlan(fileOffset, length);
 		return await this.readAccordingToPlan(buffer, plan);
 	}
 
-	public async write(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Promise<fs.WriteResult> {
+	public async write(
+		buffer: Buffer,
+		bufferOffset: number,
+		length: number,
+		fileOffset: number,
+	): Promise<fs.WriteResult> {
 		if (this.recordWrites) {
 			const chunk = new BufferDiskChunk(
 				buffer.slice(bufferOffset, bufferOffset + length),
@@ -195,7 +232,11 @@ export abstract class Disk {
 		return this.capacity;
 	}
 
-	public async getStream(position: number = 0, length: number | null = null, highWaterMark: number = DEFAULT_HIGH_WATER_MARK): Promise<DiskStream> {
+	public async getStream(
+		position: number = 0,
+		length: number | null = null,
+		highWaterMark: number = DEFAULT_HIGH_WATER_MARK,
+	): Promise<DiskStream> {
 		let end = await this.getCapacity();
 		if (length !== null) {
 			end = Math.min(position + length, end);
@@ -204,12 +245,15 @@ export abstract class Disk {
 	}
 
 	public getDiscardedChunks(): DiskChunk[] {
-		return this.knownChunks.filter((chunk) => {
-			return (chunk instanceof DiscardDiskChunk);
+		return this.knownChunks.filter(chunk => {
+			return chunk instanceof DiscardDiskChunk;
 		});
 	}
 
-	public async getBlockMap(blockSize: number, calculateChecksums: boolean): Promise<any> {
+	public async getBlockMap(
+		blockSize: number,
+		calculateChecksums: boolean,
+	): Promise<any> {
 		const capacity = await this.getCapacity();
 		return await getBlockMap(this, blockSize, capacity, calculateChecksums);
 	}
@@ -246,22 +290,22 @@ export abstract class Disk {
 
 	private createReadPlan(offset: number, length: number): ReadPlan {
 		const end = offset + length - 1;
-		const interval: Interval = [ offset, end ];
+		const interval: Interval = [offset, end];
 		let chunks = this.knownChunks;
 		if (!this.discardIsZero) {
-			chunks = chunks.filter((chunk) => {
+			chunks = chunks.filter(chunk => {
 				return !(chunk instanceof DiscardDiskChunk);
 			});
 		}
 		const intersections: DiskChunk[] = [];
-		chunks.forEach((chunk) => {
+		chunks.forEach(chunk => {
 			const inter = intervalIntersection(interval, chunk.interval());
 			if (inter !== null) {
 				intersections.push(chunk.slice(inter[0], inter[1]));
 			}
 		});
 		if (intersections.length === 0) {
-			return [ interval ];
+			return [interval];
 		}
 		const readPlan: ReadPlan = [];
 		let chunk;
@@ -272,39 +316,51 @@ export abstract class Disk {
 			readPlan.push(chunk);
 			offset = chunk.end + 1;
 		}
-		if (chunk && (end > chunk.end)) {
+		if (chunk && end > chunk.end) {
 			readPlan.push([chunk.end + 1, end]);
 		}
 		return readPlan;
 	}
 
-	private async readAccordingToPlan(buffer: Buffer, plan: ReadPlan): Promise<fs.ReadResult> {
+	private async readAccordingToPlan(
+		buffer: Buffer,
+		plan: ReadPlan,
+	): Promise<fs.ReadResult> {
 		let offset = 0;
-		await Bluebird.each(plan, async (entry): Promise<void> => {
-			if (entry instanceof DiskChunk) {
-				const data = entry.data();
-				const length = Math.min(data.length, buffer.length - offset);
-				data.copy(buffer, offset, 0, length);
-				offset += length;
-			} else {
-				const length = entry[1] - entry[0] + 1;
-				await this._read(buffer, offset, length, entry[0]);
-				if (this.recordReads) {
-					const chunk = new BufferDiskChunk(
-						Buffer.from(buffer.slice(offset, offset + length)),
-						entry[0],
-					);
-					this.insertDiskChunk(chunk);
+		await Bluebird.each(
+			plan,
+			async (entry): Promise<void> => {
+				if (entry instanceof DiskChunk) {
+					const data = entry.data();
+					const length = Math.min(data.length, buffer.length - offset);
+					data.copy(buffer, offset, 0, length);
+					offset += length;
+				} else {
+					const length = entry[1] - entry[0] + 1;
+					await this._read(buffer, offset, length, entry[0]);
+					if (this.recordReads) {
+						const chunk = new BufferDiskChunk(
+							Buffer.from(buffer.slice(offset, offset + length)),
+							entry[0],
+						);
+						this.insertDiskChunk(chunk);
+					}
+					offset += length;
 				}
-				offset += length;
-			}
-		});
+			},
+		);
 		return { bytesRead: offset, buffer };
 	}
 }
 
 export class FileDisk extends Disk {
-	constructor(protected readonly fd: number, readOnly: boolean = false, recordWrites: boolean = false, recordReads: boolean = false, discardIsZero: boolean = true) {
+	constructor(
+		protected readonly fd: number,
+		readOnly: boolean = false,
+		recordWrites: boolean = false,
+		recordReads: boolean = false,
+		discardIsZero: boolean = true,
+	) {
 		super(readOnly, recordWrites, recordReads, discardIsZero);
 	}
 
@@ -313,11 +369,21 @@ export class FileDisk extends Disk {
 		return stats.size;
 	}
 
-	protected async _read(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Promise<fs.ReadResult> {
+	protected async _read(
+		buffer: Buffer,
+		bufferOffset: number,
+		length: number,
+		fileOffset: number,
+	): Promise<fs.ReadResult> {
 		return await fs.read(this.fd, buffer, bufferOffset, length, fileOffset);
 	}
 
-	protected async _write(buffer: Buffer, bufferOffset: number, length: number, fileOffset: number): Promise<fs.WriteResult> {
+	protected async _write(
+		buffer: Buffer,
+		bufferOffset: number,
+		length: number,
+		fileOffset: number,
+	): Promise<fs.WriteResult> {
 		return await fs.write(this.fd, buffer, bufferOffset, length, fileOffset);
 	}
 

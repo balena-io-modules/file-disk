@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import { afterEach, beforeEach, describe } from 'mocha';
 import * as path from 'path';
 
-import { FileDisk, openFile } from '../src';
+import { BufferDisk, Disk, FileDisk, openFile } from '../src';
 import { BufferDiskChunk } from '../src/diskchunk';
 
 const FIXTURES_PATH = 'fixtures';
@@ -41,6 +41,15 @@ function createDisk(fd: number): FileDisk {
 	return new FileDisk(fd);
 }
 
+async function createBufferDisk(filePath: string): Promise<BufferDisk> {
+	// read write
+	// don't record reads
+	// don't record writes
+	// discarded chunks are zeros
+	const buffer = await streamToBuffer(fs.createReadStream(filePath));
+	return new BufferDisk(buffer);
+}
+
 function createCowDisk(fd: number): FileDisk {
 	// read only
 	// record writes
@@ -58,14 +67,19 @@ function createCowDisk2(fd: number): FileDisk {
 }
 
 async function testOnAllDisks(
-	fn: (disk: FileDisk) => Promise<void>,
+	fn: (disk: Disk) => Promise<void>,
 ): Promise<void> {
 	await Bluebird.using(
 		openFile(DISK_PATH, 'r'),
 		openFile(TMP_DISK_PATH, 'r+'),
 		async (fileFd, tmpFileFd) => {
 			await Bluebird.map(
-				[createCowDisk(fileFd), createCowDisk2(fileFd), createDisk(tmpFileFd)],
+				[
+					createCowDisk(fileFd),
+					createCowDisk2(fileFd),
+					createDisk(tmpFileFd),
+					await createBufferDisk(DISK_PATH),
+				],
 				fn,
 			);
 		},
@@ -106,7 +120,7 @@ describe('file-disk', () => {
 		fs.unlinkSync(TMP_DISK_PATH);
 	});
 
-	async function testGetCapacity(disk: FileDisk) {
+	async function testGetCapacity(disk: Disk) {
 		const size = await disk.getCapacity();
 		assert.strictEqual(size, DISK_SIZE);
 	}
@@ -115,7 +129,7 @@ describe('file-disk', () => {
 		await testOnAllDisks(testGetCapacity);
 	});
 
-	async function readRespectsLength(disk: FileDisk) {
+	async function readRespectsLength(disk: Disk) {
 		const buf = Buffer.allocUnsafe(1024);
 		buf.fill(1);
 		const result = await disk.read(buf, 0, 10, 0);
@@ -134,7 +148,7 @@ describe('file-disk', () => {
 		await testOnAllDisks(readRespectsLength);
 	});
 
-	async function writeRespectsLength(disk: FileDisk) {
+	async function writeRespectsLength(disk: Disk) {
 		const buf = Buffer.alloc(1024);
 		buf.fill(1);
 		await disk.write(buf, 0, 10, 0);
@@ -153,7 +167,7 @@ describe('file-disk', () => {
 		await testOnAllDisks(writeRespectsLength);
 	});
 
-	async function shouldReadAndWrite(disk: FileDisk) {
+	async function shouldReadAndWrite(disk: Disk) {
 		const buf = Buffer.allocUnsafe(1024);
 		buf.fill(1);
 		const writeResult = await disk.write(buf, 0, buf.length, 0);
@@ -177,7 +191,7 @@ describe('file-disk', () => {
 		return buffer;
 	}
 
-	async function checkDiskContains(disk: FileDisk, pattern: string) {
+	async function checkDiskContains(disk: Disk, pattern: string) {
 		// Helper for checking disk contents.
 		const size = 32;
 		const expected = createBuffer(pattern, size);
@@ -185,7 +199,7 @@ describe('file-disk', () => {
 		assert(buffer.equals(expected));
 	}
 
-	async function overlappingWrites(disk: FileDisk) {
+	async function overlappingWrites(disk: Disk) {
 		const buf = Buffer.allocUnsafe(8);
 		await disk.discard(0, DISK_SIZE);
 

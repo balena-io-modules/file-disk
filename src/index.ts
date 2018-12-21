@@ -391,3 +391,51 @@ export class FileDisk extends Disk {
 		await fs.fdatasync(this.fd);
 	}
 }
+
+export class BufferDisk extends Disk {
+	constructor(
+		private readonly buffer: Buffer,
+		readOnly: boolean = false,
+		recordWrites: boolean = false,
+		recordReads: boolean = false,
+		discardIsZero: boolean = true,
+	) {
+		super(readOnly, recordWrites, recordReads, discardIsZero);
+	}
+
+	protected async _getCapacity(): Promise<number> {
+		return this.buffer.length;
+	}
+
+	protected async _read(
+		buffer: Buffer,
+		bufferOffset: number,
+		length: number,
+		fileOffset: number,
+	): Promise<fs.ReadResult> {
+		const bytesRead = this.buffer.copy(
+			buffer,
+			bufferOffset,
+			fileOffset,
+			fileOffset + length,
+		);
+		return { buffer, bytesRead };
+	}
+
+	protected async _write(
+		buffer: Buffer,
+		bufferOffset: number,
+		length: number,
+		fileOffset: number,
+	): Promise<fs.WriteResult> {
+		const bytesWritten = buffer.copy(
+			this.buffer,
+			fileOffset,
+			bufferOffset,
+			bufferOffset + length,
+		);
+		return { buffer, bytesWritten };
+	}
+
+	protected async _flush(): Promise<void> {}
+}

@@ -1,19 +1,6 @@
 import * as Bluebird from 'bluebird';
 import * as fs from 'fs';
 
-const _read = Bluebird.promisify(fs.read, { context: fs, multiArgs: true });
-
-const _write = Bluebird.promisify(fs.write, {
-	context: fs,
-	multiArgs: true,
-}) as (
-	fd: number,
-	buffer: Buffer,
-	offset?: number,
-	length?: number,
-	position?: number,
-) => any;
-
 export const open = Bluebird.promisify(fs.open, { context: fs }) as (
 	path: string,
 	flags: string | number,
@@ -42,28 +29,50 @@ export interface WriteResult {
 
 export const read = (
 	fd: number,
-	buffer: Buffer,
+	buf: Buffer,
 	offset: number,
 	length: number,
 	position: number,
-): Bluebird<ReadResult> => {
-	return _read(fd, buffer, offset, length, position).spread(
-		(bytesRead: number, buffer: Buffer) => {
-			return { bytesRead, buffer };
-		},
-	);
+): Promise<ReadResult> => {
+	return new Promise((resolve, reject) => {
+		fs.read(
+			fd,
+			buf,
+			offset,
+			length,
+			position,
+			(error: Error | null, bytesRead: number, buffer: Buffer) => {
+				if (error !== null) {
+					reject(error);
+				} else {
+					resolve({ bytesRead, buffer });
+				}
+			},
+		);
+	});
 };
 
 export const write = (
 	fd: number,
-	buffer: Buffer,
+	buf: Buffer,
 	offset: number,
 	length: number,
 	position: number,
-): Bluebird<WriteResult> => {
-	return _write(fd, buffer, offset, length, position).spread(
-		(bytesWritten: number, buffer: Buffer) => {
-			return { bytesWritten, buffer };
-		},
-	);
+): Promise<WriteResult> => {
+	return new Promise((resolve, reject) => {
+		fs.write(
+			fd,
+			buf,
+			offset,
+			length,
+			position,
+			(error: Error | null, bytesWritten: number, buffer: Buffer) => {
+				if (error !== null) {
+					reject(error);
+				} else {
+					resolve({ bytesWritten, buffer });
+				}
+			},
+		);
+	});
 };

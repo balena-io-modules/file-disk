@@ -6,7 +6,11 @@
 		"outDir": "build",
 		"declaration": true,
 		"sourceMap": true,
-		"module": "commonjs"
+		"module": "commonjs",
+		"noImplicitAny": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"strictNullChecks": true
 	},
 	"exclude": [ "test/*.ts" ]
 }

@@ -82,7 +82,7 @@ class DiskTransformStream extends Transform {
 		}
 	}
 
-	public _transform(chunk: Buffer, enc: string, cb: () => void): void {
+	public _transform(chunk: Buffer, _enc: string, cb: () => void): void {
 		const start: number = this.position;
 		const end: number = start + chunk.length - 1;
 		const interval: Interval = [start, end];
@@ -178,7 +178,7 @@ export abstract class Disk {
 
 	public async read(
 		buffer: Buffer,
-		bufferOffset: number,
+		_bufferOffset: number,
 		length: number,
 		fileOffset: number,
 	): Promise<fs.ReadResult> {

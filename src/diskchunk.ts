@@ -1,4 +1,4 @@
-import { intervalIntersection, Interval } from './interval-intersection';
+import { Interval, intervalIntersection } from './interval-intersection';
 
 /*
 A `DiskChunk` is a part of a `Disk` for which we already know the contents.
@@ -29,27 +29,27 @@ export abstract class DiskChunk {
 		public readonly end: number, // position of the last byte in file (included)
 	) {}
 
-	abstract slice(start: number, end: number): DiskChunk;
+	public abstract slice(start: number, end: number): DiskChunk;
 
-	abstract data(): Buffer;
+	public abstract data(): Buffer;
 
-	interval(): Interval {
+	public interval(): Interval {
 		return [this.start, this.end];
 	}
 
-	intersection(other: DiskChunk): Interval | null {
+	public intersection(other: DiskChunk): Interval | null {
 		return intervalIntersection(this.interval(), other.interval());
 	}
 
-	intersects(other: DiskChunk): boolean {
+	public intersects(other: DiskChunk): boolean {
 		return this.intersection(other) !== null;
 	}
 
-	includedIn(other: DiskChunk): boolean {
+	public includedIn(other: DiskChunk): boolean {
 		return this.start >= other.start && this.end <= other.end;
 	}
 
-	cut(other: DiskChunk): DiskChunk[] {
+	public cut(other: DiskChunk): DiskChunk[] {
 		// `other` must be an overlapping `DiskChunk`
 		const result: DiskChunk[] = [];
 		const intersection = this.intersection(other);
@@ -81,11 +81,11 @@ export class BufferDiskChunk extends DiskChunk {
 		}
 	}
 
-	data(): Buffer {
+	public data(): Buffer {
 		return this.buffer;
 	}
 
-	slice(start: number, end: number): BufferDiskChunk {
+	public slice(start: number, end: number): BufferDiskChunk {
 		// start and end are relative to the Disk
 		const startInBuffer = start - this.start;
 		return new BufferDiskChunk(
@@ -105,11 +105,11 @@ export class DiscardDiskChunk extends DiskChunk {
 		super(offset, offset + length - 1);
 	}
 
-	data(): Buffer {
+	public data(): Buffer {
 		return Buffer.alloc(this.end - this.start + 1);
 	}
 
-	slice(start: number, end: number): DiscardDiskChunk {
+	public slice(start: number, end: number): DiscardDiskChunk {
 		// start and end are relative to the Disk
 		return new DiscardDiskChunk(start, end - start + 1);
 	}

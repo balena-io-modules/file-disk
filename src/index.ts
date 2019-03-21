@@ -4,7 +4,7 @@ import { Readable, Transform } from 'stream';
 import { getBlockMap } from './blockmap';
 import { BufferDiskChunk, DiscardDiskChunk, DiskChunk } from './diskchunk';
 import * as fs from './fs';
-import { intervalIntersection, Interval } from './interval-intersection';
+import { Interval, intervalIntersection } from './interval-intersection';
 
 export { BufferDiskChunk, DiscardDiskChunk, DiskChunk, Interval };
 export { ReadResult, WriteResult } from './fs';
@@ -57,7 +57,7 @@ export class DiskStream extends Readable {
 		}
 	}
 
-	_read(size: number): void {
+	public _read(size: number): void {
 		this.__read(size);
 	}
 }
@@ -108,7 +108,7 @@ class DiskTransformStream extends Transform {
 	}
 }
 
-type ReadPlan = (Interval | DiskChunk)[];
+type ReadPlan = Array<Interval | DiskChunk>;
 
 export function openFile(
 	path: string,
@@ -143,8 +143,8 @@ export abstract class Disk {
 	//   * position: start reading from this offset (defaults to zero)
 	//   * length: read that amount of bytes (defaults to (disk capacity - position))
 	//   * highWaterMark: size of chunks that will be read (default 16384, minimum 16)
-	readonly knownChunks: DiskChunk[] = []; // sorted list of non overlapping DiskChunks
-	capacity: number | null = null;
+	public readonly knownChunks: DiskChunk[] = []; // sorted list of non overlapping DiskChunks
+	public capacity: number | null = null;
 
 	constructor(
 		public readOnly: boolean = false,
@@ -293,15 +293,13 @@ export abstract class Disk {
 		const interval: Interval = [offset, end];
 		let chunks = this.knownChunks;
 		if (!this.discardIsZero) {
-			chunks = chunks.filter(chunk => {
-				return !(chunk instanceof DiscardDiskChunk);
-			});
+			chunks = chunks.filter(c => !(c instanceof DiscardDiskChunk));
 		}
 		const intersections: DiskChunk[] = [];
-		chunks.forEach(chunk => {
-			const inter = intervalIntersection(interval, chunk.interval());
+		chunks.forEach(c => {
+			const inter = intervalIntersection(interval, c.interval());
 			if (inter !== null) {
-				intersections.push(chunk.slice(inter[0], inter[1]));
+				intersections.push(c.slice(inter[0], inter[1]));
 			}
 		});
 		if (intersections.length === 0) {
@@ -437,5 +435,7 @@ export class BufferDisk extends Disk {
 		return { buffer, bytesWritten };
 	}
 
-	protected async _flush(): Promise<void> {}
+	protected async _flush(): Promise<void> {
+		// Nothing to do to flush a BufferDisk
+	}
 }

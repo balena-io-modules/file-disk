@@ -42,12 +42,12 @@ export interface WriteResult {
 
 export const read = (
 	fd: number,
-	buffer: Buffer,
+	buf: Buffer,
 	offset: number,
 	length: number,
 	position: number,
 ): Bluebird<ReadResult> => {
-	return _read(fd, buffer, offset, length, position).spread(
+	return _read(fd, buf, offset, length, position).spread(
 		(bytesRead: number, buffer: Buffer) => {
 			return { bytesRead, buffer };
 		},
@@ -56,12 +56,12 @@ export const read = (
 
 export const write = (
 	fd: number,
-	buffer: Buffer,
+	buf: Buffer,
 	offset: number,
 	length: number,
 	position: number,
 ): Bluebird<WriteResult> => {
-	return _write(fd, buffer, offset, length, position).spread(
+	return _write(fd, buf, offset, length, position).spread(
 		(bytesWritten: number, buffer: Buffer) => {
 			return { bytesWritten, buffer };
 		},

@@ -21,8 +21,8 @@
     "clean": "rm -rf build",
     "compile": "npm run clean && tsc",
     "prepublishOnly": "npm run compile",
-    "prettier": "prettier --config ./node_modules/resin-lint/config/.prettierrc --write \"src/*.ts\" \"typings/**/*.ts\" \"test/*.ts\"",
-    "lint": "resin-lint --typescript src typings test && tsc --noEmit",
+    "prettier": "prettier --config ./node_modules/resin-lint/config/.prettierrc --write \"src/*.ts\" \"test/*.ts\"",
+    "lint": "resin-lint --typescript src test && tsc --noEmit",
     "test": "npm run lint && mocha --require ts-node/register test/*.ts"
   },
   "files": [
@@ -35,13 +35,12 @@
     "@types/bluebird": "^3.5.24",
     "@types/mocha": "^5.2.5",
     "@types/node": "^6.0.118",
-    "mocha": "^5.2.0",
+    "mocha": "^6.0.2",
     "resin-lint": "^3.0.1",
-    "ts-node": "7.0.1",
+    "ts-node": "^8.0.3",
     "typescript": "^3.1.6"
   },
   "dependencies": {
-    "blockmap": "^3.4.3",
     "bluebird": "^3.5.3"
   }
 }

@@ -35,9 +35,9 @@
     "@types/bluebird": "^3.5.24",
     "@types/mocha": "^5.2.5",
     "@types/node": "^6.0.118",
-    "mocha": "^5.2.0",
+    "mocha": "^6.0.2",
     "resin-lint": "^3.0.1",
-    "ts-node": "7.0.1",
+    "ts-node": "^8.0.3",
     "typescript": "^3.1.6"
   },
   "dependencies": {

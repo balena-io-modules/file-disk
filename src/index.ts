@@ -1,12 +1,12 @@
 import * as Bluebird from 'bluebird';
 import { Readable, Transform } from 'stream';
 
-import { getBlockMap } from './blockmap';
 import { BufferDiskChunk, DiscardDiskChunk, DiskChunk } from './diskchunk';
 import * as fs from './fs';
 import { Interval, intervalIntersection } from './interval-intersection';
+import { getRanges, Range } from './mapped-ranges';
 
-export { BufferDiskChunk, DiscardDiskChunk, DiskChunk, Interval };
+export { BufferDiskChunk, DiscardDiskChunk, DiskChunk, Interval, Range };
 export { ReadResult, WriteResult } from './fs';
 
 const MIN_HIGH_WATER_MARK = 16;
@@ -250,12 +250,8 @@ export abstract class Disk {
 		});
 	}
 
-	public async getBlockMap(
-		blockSize: number,
-		calculateChecksums: boolean,
-	): Promise<any> {
-		const capacity = await this.getCapacity();
-		return await getBlockMap(this, blockSize, capacity, calculateChecksums);
+	public async getRanges(blockSize: number): Promise<Range[]> {
+		return Array.from(await getRanges(this, blockSize));
 	}
 
 	private insertDiskChunk(chunk: DiskChunk, insert: boolean = true): void {

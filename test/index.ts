@@ -1,12 +1,10 @@
 import * as assert from 'assert';
 import * as Bluebird from 'bluebird';
-import { createHash } from 'crypto';
 import * as fs from 'fs';
 import { afterEach, beforeEach, describe } from 'mocha';
 import * as path from 'path';
 
-import { BufferDisk, Disk, FileDisk, openFile } from '../src';
-import { BufferDiskChunk } from '../src/diskchunk';
+import { BufferDisk, BufferDiskChunk, Disk, FileDisk, openFile } from '../src';
 
 const FIXTURES_PATH = 'fixtures';
 const FILE_NAME = 'zeros';
@@ -25,12 +23,6 @@ async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
 			});
 		},
 	);
-}
-
-function sha256(buffer: Buffer): string {
-	const hash = createHash('sha256');
-	hash.update(buffer);
-	return hash.digest('hex');
 }
 
 function createDisk(fd: number): FileDisk {
@@ -267,90 +259,64 @@ describe('file-disk', () => {
 		assert.strictEqual(discarded[1].start, 32);
 		assert.strictEqual(discarded[1].end, 10239);
 
-		const blockmap1 = await disk.getBlockMap(1, true);
-		assert.strictEqual(blockmap1.ranges.length, 2);
-		assert.strictEqual(
-			blockmap1.ranges[0].checksum,
-			sha256(createBuffer('1166669999999988888888')),
-		);
-		assert.strictEqual(
-			blockmap1.ranges[1].checksum,
-			sha256(createBuffer('44444477')),
-		);
+		const ranges1 = await disk.getRanges(1);
+		assert.strictEqual(ranges1.length, 2);
+		assert.strictEqual(ranges1[0].offset, 0);
+		assert.strictEqual(ranges1[0].length, 22);
+		assert.strictEqual(ranges1[1].offset, 24);
+		assert.strictEqual(ranges1[1].length, 8);
 
-		const blockmap2 = await disk.getBlockMap(2, true);
-		assert.strictEqual(blockmap2.ranges.length, 2);
-		assert.strictEqual(
-			blockmap2.ranges[0].checksum,
-			sha256(createBuffer('1166669999999988888888')),
-		);
-		assert.strictEqual(
-			blockmap2.ranges[1].checksum,
-			sha256(createBuffer('44444477')),
-		);
+		const ranges2 = await disk.getRanges(2);
+		assert.strictEqual(ranges2.length, 2);
+		assert.strictEqual(ranges2[0].offset, 0);
+		assert.strictEqual(ranges2[0].length, 22);
+		assert.strictEqual(ranges2[1].offset, 24);
+		assert.strictEqual(ranges2[1].length, 8);
 
-		const blockmap3 = await disk.getBlockMap(3, true);
-		assert.strictEqual(blockmap3.ranges.length, 1);
-		assert.strictEqual(
-			blockmap3.ranges[0].checksum,
-			sha256(createBuffer('116666999999998888888800444444770')),
-		);
+		const ranges3 = await disk.getRanges(3);
+		assert.strictEqual(ranges3.length, 1);
+		assert.strictEqual(ranges3[0].offset, 0);
+		assert.strictEqual(ranges3[0].length, 33);
 
-		const blockmap4 = await disk.getBlockMap(4, true);
-		assert.strictEqual(blockmap4.ranges.length, 1);
-		assert.strictEqual(
-			blockmap4.ranges[0].checksum,
-			sha256(createBuffer('11666699999999888888880044444477')),
-		);
+		const ranges4 = await disk.getRanges(4);
+		assert.strictEqual(ranges4.length, 1);
+		assert.strictEqual(ranges4[0].offset, 0);
+		assert.strictEqual(ranges4[0].length, 32);
 
-		const blockmap5 = await disk.getBlockMap(5, true);
-		assert.strictEqual(blockmap5.ranges.length, 1);
-		assert.strictEqual(
-			blockmap5.ranges[0].checksum,
-			sha256(createBuffer('11666699999999888888880044444477000')),
-		);
+		const ranges5 = await disk.getRanges(5);
+		assert.strictEqual(ranges5.length, 1);
+		assert.strictEqual(ranges5[0].offset, 0);
+		assert.strictEqual(ranges5[0].length, 35);
 
-		const blockmap6 = await disk.getBlockMap(6, true);
-		assert.strictEqual(blockmap6.ranges.length, 1);
-		assert.strictEqual(
-			blockmap6.ranges[0].checksum,
-			sha256(createBuffer('116666999999998888888800444444770000')),
-		);
+		const ranges6 = await disk.getRanges(6);
+		assert.strictEqual(ranges6.length, 1);
+		assert.strictEqual(ranges6[0].offset, 0);
+		assert.strictEqual(ranges6[0].length, 36);
 
-		const blockmap7 = await disk.getBlockMap(7, true);
-		assert.strictEqual(blockmap7.ranges.length, 1);
-		assert.strictEqual(
-			blockmap7.ranges[0].checksum,
-			sha256(createBuffer('11666699999999888888880044444477000')),
-		);
+		const ranges7 = await disk.getRanges(7);
+		assert.strictEqual(ranges7.length, 1);
+		assert.strictEqual(ranges7[0].offset, 0);
+		assert.strictEqual(ranges7[0].length, 35);
 
-		const blockmap8 = await disk.getBlockMap(8, true);
-		assert.strictEqual(blockmap8.ranges.length, 1);
-		assert.strictEqual(
-			blockmap8.ranges[0].checksum,
-			sha256(createBuffer('11666699999999888888880044444477')),
-		);
+		const ranges8 = await disk.getRanges(8);
+		assert.strictEqual(ranges8.length, 1);
+		assert.strictEqual(ranges8[0].offset, 0);
+		assert.strictEqual(ranges8[0].length, 32);
 
-		const blockmap9 = await disk.getBlockMap(9, true);
-		assert.strictEqual(blockmap9.ranges.length, 1);
-		assert.strictEqual(
-			blockmap9.ranges[0].checksum,
-			sha256(createBuffer('116666999999998888888800444444770000')),
-		);
+		const ranges9 = await disk.getRanges(9);
+		assert.strictEqual(ranges9.length, 1);
+		assert.strictEqual(ranges9[0].offset, 0);
+		assert.strictEqual(ranges9[0].length, 36);
 
-		const blockmap10 = await disk.getBlockMap(10, true);
-		assert.strictEqual(blockmap10.ranges.length, 1);
-		assert.strictEqual(
-			blockmap10.ranges[0].checksum,
-			sha256(createBuffer('1166669999999988888888004444447700000000')),
-		);
+		const ranges10 = await disk.getRanges(10);
+		assert.strictEqual(ranges10.length, 1);
+		assert.strictEqual(ranges10[0].offset, 0);
+		assert.strictEqual(ranges10[0].length, 40);
 
-		const blockmap11 = await disk.getBlockMap(11, true);
-		assert.strictEqual(blockmap11.ranges.length, 1);
-		assert.strictEqual(
-			blockmap11.ranges[0].checksum,
-			sha256(createBuffer('116666999999998888888800444444770')),
-		);
+		const ranges11 = await disk.getRanges(11);
+		assert.strictEqual(ranges11.length, 1);
+		assert.strictEqual(ranges11[0].offset, 0);
+		assert.strictEqual(ranges11[0].length, 33);
 
 		// Test that disk.getStream() and the original image stream transformed by disk.getTransformStream() return the same streams.
 		if (disk.readOnly && disk.recordWrites) {

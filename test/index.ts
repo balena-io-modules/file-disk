@@ -318,6 +318,16 @@ describe('file-disk', () => {
 		assert.strictEqual(ranges11[0].offset, 0);
 		assert.strictEqual(ranges11[0].length, 33);
 
+		await disk.discard(8, 2);
+		const ranges12 = await disk.getRanges(1);
+		assert.strictEqual(ranges12.length, 3);
+		assert.strictEqual(ranges12[0].offset, 0);
+		assert.strictEqual(ranges12[0].length, 8);
+		assert.strictEqual(ranges12[1].offset, 10);
+		assert.strictEqual(ranges12[1].length, 12);
+		assert.strictEqual(ranges12[2].offset, 24);
+		assert.strictEqual(ranges12[2].length, 8);
+
 		// Test that disk.getStream() and the original image stream transformed by disk.getTransformStream() return the same streams.
 		if (disk.readOnly && disk.recordWrites) {
 			// This test only makes sense for disks that record writes.

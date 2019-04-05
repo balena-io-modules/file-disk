@@ -43,12 +43,9 @@ any time!**
 `FileDisk.getDiscardedChunks()` returns the list of discarded chunks. Each chunk
 has a `start` and `end` properties. `end` position is inclusive.
 
-`FileDisk.getBlockMap(blockSize, calculateChecksums`: `Promise<blockmap.BlockMap>`
+`FileDisk.getRanges(blockSize)`: `Promise<Range[]>`
  - using the disk's discarded chunks and the given blockSize, it returns a Promise
-of a [`BlockMap`](https://github.com/balena-io-modules/blockmap).
-Be careful to how you use `Disk`'s `discardIsZero` option as it may change the
-blockmap ranges checksums if discarded regions not aligned with `blockSize`
-contain anything else than zeros on the disk.
+of an array of `Range`s: `{ offset: number, length: number }`.
 
 ### S3Disk
 

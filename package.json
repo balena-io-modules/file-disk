@@ -41,6 +41,7 @@
     "typescript": "^3.1.6"
   },
   "dependencies": {
-    "bluebird": "^3.5.3"
+    "bluebird": "^3.5.3",
+    "tslib": "^2.0.0"
   }
 }

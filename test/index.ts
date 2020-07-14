@@ -101,7 +101,7 @@ describe('BufferDiskChunk', () => {
 });
 
 describe('file-disk', () => {
-	beforeEach(done => {
+	beforeEach((done) => {
 		// Make a copy of the disk image
 		fs.createReadStream(DISK_PATH)
 			.pipe(fs.createWriteStream(TMP_DISK_PATH))

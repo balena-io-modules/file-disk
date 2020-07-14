@@ -121,7 +121,7 @@ export function openFile(
 	// Bluebird.using(openFile('/some/path', 'r+'), (fd) => {
 	//   doSomething(fd);
 	// });
-	return fs.open(path, flags, mode).disposer(fd => {
+	return fs.open(path, flags, mode).disposer((fd) => {
 		return fs.close(fd);
 	});
 }
@@ -245,7 +245,7 @@ export abstract class Disk {
 	}
 
 	public getDiscardedChunks(): DiskChunk[] {
-		return this.knownChunks.filter(chunk => {
+		return this.knownChunks.filter((chunk) => {
 			return chunk instanceof DiscardDiskChunk;
 		});
 	}
@@ -289,10 +289,10 @@ export abstract class Disk {
 		const interval: Interval = [offset, end];
 		let chunks = this.knownChunks;
 		if (!this.discardIsZero) {
-			chunks = chunks.filter(c => !(c instanceof DiscardDiskChunk));
+			chunks = chunks.filter((c) => !(c instanceof DiscardDiskChunk));
 		}
 		const intersections: DiskChunk[] = [];
-		chunks.forEach(c => {
+		chunks.forEach((c) => {
 			const inter = intervalIntersection(interval, c.interval());
 			if (inter !== null) {
 				intersections.push(c.slice(inter[0], inter[1]));

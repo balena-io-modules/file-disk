@@ -1,6 +1,6 @@
 {
   "name": "file-disk",
-  "version": "6.0.2",
+  "version": "6.0.3",
   "description": "Handles reads / writes on disk image files.",
   "author": "Petros Angelatos <petrosagg@balena.io>",
   "contributors": [

@@ -197,7 +197,7 @@ export abstract class Disk {
 				buffer.slice(bufferOffset, bufferOffset + length),
 				fileOffset,
 			);
-			this.insertDiskChunk(chunk);
+			await this.insertDiskChunk(chunk);
 		} else {
 			// Special case: we do not record writes but we may have recorded
 			// some discards. We want to remove any discard overlapping this
@@ -206,7 +206,7 @@ export abstract class Disk {
 			// will slice existing discards in this area if there are any.
 			const chunk = new DiscardDiskChunk(fileOffset, length);
 			// The `false` below means "don't insert the chunk into knownChunks"
-			this.insertDiskChunk(chunk, false);
+			await this.insertDiskChunk(chunk, false);
 		}
 		if (this.readOnly) {
 			return { bytesWritten: length, buffer };
@@ -222,7 +222,7 @@ export abstract class Disk {
 	}
 
 	public async discard(offset: number, length: number): Promise<void> {
-		this.insertDiskChunk(new DiscardDiskChunk(offset, length));
+		await this.insertDiskChunk(new DiscardDiskChunk(offset, length));
 	}
 
 	public async getCapacity(): Promise<number> {
@@ -254,7 +254,15 @@ export abstract class Disk {
 		return Array.from(await getRanges(this, blockSize));
 	}
 
-	private insertDiskChunk(chunk: DiskChunk, insert: boolean = true): void {
+	private async insertDiskChunk(
+		chunk: DiskChunk,
+		insert: boolean = true,
+	): Promise<void> {
+		const capacity = await this.getCapacity();
+		if (chunk.start < 0 || chunk.end > capacity) {
+			// Invalid chunk
+			return;
+		}
 		let insertAt = 0;
 		for (let i = 0; i < this.knownChunks.length; i++) {
 			const other = this.knownChunks[i];
@@ -337,7 +345,7 @@ export abstract class Disk {
 							Buffer.from(buffer.slice(offset, offset + length)),
 							entry[0],
 						);
-						this.insertDiskChunk(chunk);
+						await this.insertDiskChunk(chunk);
 					}
 					offset += length;
 				}

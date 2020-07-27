@@ -1,10 +1,15 @@
 import * as assert from 'assert';
-import * as Bluebird from 'bluebird';
 import * as fs from 'fs';
 import { afterEach, beforeEach, describe } from 'mocha';
 import * as path from 'path';
 
-import { BufferDisk, BufferDiskChunk, Disk, FileDisk, openFile } from '../src';
+import {
+	BufferDisk,
+	BufferDiskChunk,
+	Disk,
+	FileDisk,
+	withOpenFile,
+} from '../src';
 
 const FIXTURES_PATH = 'fixtures';
 const FILE_NAME = 'zeros';
@@ -25,54 +30,61 @@ async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
 	);
 }
 
-function createDisk(fd: number): FileDisk {
+function createDisk(handle: fs.promises.FileHandle): FileDisk {
 	// read write
 	// don't record reads
 	// don't record writes
 	// discarded chunks are zeros
-	return new FileDisk(fd);
+	return new FileDisk(handle);
 }
 
-async function createBufferDisk(filePath: string): Promise<BufferDisk> {
+async function createBufferDisk(
+	handle: fs.promises.FileHandle,
+): Promise<BufferDisk> {
 	// read write
 	// don't record reads
 	// don't record writes
 	// discarded chunks are zeros
-	const buffer = await streamToBuffer(fs.createReadStream(filePath));
+	const buffer = await streamToBuffer(
+		fs.createReadStream('', { fd: handle.fd, autoClose: false }),
+	);
 	return new BufferDisk(buffer);
 }
 
-function createCowDisk(fd: number): FileDisk {
+function createCowDisk(handle: fs.promises.FileHandle): FileDisk {
 	// read only
 	// record writes
 	// record reads
 	// discarded chunks are zeros
-	return new FileDisk(fd, true, true, true, true);
+	return new FileDisk(handle, true, true, true, true);
 }
 
-function createCowDisk2(fd: number): FileDisk {
+function createCowDisk2(handle: fs.promises.FileHandle): FileDisk {
 	// read only
 	// record writes
 	// don't record reads
 	// read discarded chunks from the disk anyway
-	return new FileDisk(fd, true, true, false, false);
+	return new FileDisk(handle, true, true, false, false);
 }
 
 async function testOnAllDisks(
 	fn: (disk: Disk) => Promise<void>,
 ): Promise<void> {
-	await Bluebird.using(
-		openFile(DISK_PATH, 'r'),
-		openFile(TMP_DISK_PATH, 'r+'),
-		async (fileFd, tmpFileFd) => {
-			await Bluebird.map(
-				[
-					createCowDisk(fileFd),
-					createCowDisk2(fileFd),
-					createDisk(tmpFileFd),
-					await createBufferDisk(DISK_PATH),
-				],
-				fn,
+	await withOpenFile(
+		DISK_PATH,
+		'r',
+		async (fileHandle: fs.promises.FileHandle) => {
+			await withOpenFile(
+				TMP_DISK_PATH,
+				'r+',
+				async (tmpFileHandle: fs.promises.FileHandle) => {
+					await Promise.all([
+						fn(createCowDisk(fileHandle)),
+						fn(createCowDisk2(fileHandle)),
+						fn(createDisk(tmpFileHandle)),
+						fn(await createBufferDisk(fileHandle)),
+					]);
+				},
 			);
 		},
 	);

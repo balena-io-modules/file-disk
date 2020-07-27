@@ -57,11 +57,10 @@ of an array of `Range`s: `{ offset: number, length: number }`.
 
 ```javascript
 
-const Bluebird = require('bluebird');
 const filedisk = require('file-disk');
 
-Bluebird.using(filedisk.openFile('/path/to/some/file', 'r+'), async (fd) => {
-	const disk = new filedisk.FileDisk(fd)
+await filedisk.withOpenFile('/path/to/some/file', 'r+', async (handle) => {
+	const disk = new filedisk.FileDisk(handle)
 
 	// get file size
 	const size = await disk.getCapacity();
@@ -82,13 +81,12 @@ Bluebird.using(filedisk.openFile('/path/to/some/file', 'r+'), async (fd) => {
 
 ```javascript
 
-const Bluebird = require('bluebird');
 const filedisk = require('file-disk');
 
 const BUF = Buffer.alloc(1024);
 
-Bluebird.using(filedisk.openFile('/path/to/some/file', 'r'), async (fd) => {
-	const disk = new filedisk.FileDisk(fd, true, true);
+await filedisk.withOpenFile('/path/to/some/file', 'r', async (handle) => {
+	const disk = new filedisk.FileDisk(handle, true, true);
 	let bytesRead, bytesWritten, buffer;
 
 	// read `BUF.length` bytes starting at 0 from the file into `BUF`
@@ -102,7 +100,7 @@ Bluebird.using(filedisk.openFile('/path/to/some/file', 'r'), async (fd) => {
 	assert(BUF.equals(buffer));
 	const stream = await disk.getStream();
 	// pipe the stream somewhere
-	await new Bluebird((resolve, reject) => {
+	await new Promise((resolve, reject) => {
 		stream.pipe(someWritableStream)
 		.on('close', resolve)
 		.on('error', reject);

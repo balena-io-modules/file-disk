@@ -164,23 +164,23 @@ export abstract class Disk {
 		public discardIsZero: boolean = true,
 	) {}
 
-	protected abstract async _getCapacity(): Promise<number>;
+	protected abstract _getCapacity(): Promise<number>;
 
-	protected abstract async _read(
+	protected abstract _read(
 		buffer: Buffer,
 		bufferOffset: number,
 		length: number,
 		fileOffset: number,
 	): Promise<ReadResult>;
 
-	protected abstract async _write(
+	protected abstract _write(
 		buffer: Buffer,
 		bufferOffset: number,
 		length: number,
 		fileOffset: number,
 	): Promise<WriteResult>;
 
-	protected abstract async _flush(): Promise<void>;
+	protected abstract _flush(): Promise<void>;
 
 	public getTransformStream(): Transform {
 		// Returns a Transform that adds the recorded writes to the original image stream.

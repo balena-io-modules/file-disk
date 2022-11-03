@@ -19,7 +19,7 @@
   "homepage": "https://github.com/balena-io-modules/file-disk",
   "scripts": {
     "clean": "rm -rf build",
-    "compile": "npm run clean && tsc",
+    "build": "npm run clean && tsc",
     "prepublishOnly": "npm run compile",
     "prettier": "balena-lint --typescript --fix src test",
     "lint": "balena-lint --typescript src test && tsc --noEmit",
@@ -32,14 +32,14 @@
   ],
   "types": "build/index.d.ts",
   "devDependencies": {
-    "@balena/lint": "^5.1.0",
-    "@types/mocha": "^8.0.0",
-    "@types/node": "^10.17.28",
-    "mocha": "^8.0.1",
-    "ts-node": "^8.10.2",
-    "typescript": "^3.9.6"
+    "@balena/lint": "^6.2.0",
+    "@types/mocha": "^10.0.0",
+    "@types/node": "^18.11.9",
+    "mocha": "^10.1.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^4.8.4"
   },
   "dependencies": {
-    "tslib": "^2.0.0"
+    "tslib": "^2.4.1"
   }
 }

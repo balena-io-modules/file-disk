@@ -1,7 +1,17 @@
 - commits:
+    - subject: switch to flowzone
+      hash: 4df1660a0a522a975beb667a401ceac40ffe0dfc
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: Zane Hitchcox
+  version: 8.0.2
+  date: 2022-11-03T13:39:45.427Z
+- commits:
     - subject: Add versionbot changelog
       hash: be30ba6813603008ef4444cc1acdbb85cdf31db3
-      body: ''
+      body: ""
       footer:
         Change-type: patch
         change-type: patch
@@ -93,7 +103,7 @@
       author: Alexis Svinartchouk
       footers:
         change-type: patch
-      subject: 'Fix readme: remove getBlockMap, add GetRanges'
+      subject: "Fix readme: remove getBlockMap, add GetRanges"
       body: null
     - hash: eae6a7f5f9c07c761b9cea88a4ab40c737f16b93
       author: Alexis Svinartchouk
@@ -140,8 +150,7 @@
       author: Alexis Svinartchouk
       footers:
         change-type: patch
-      subject: >-
-        Add noImplicitAny, noUnusedLocals, noUnusedParameters and
+      subject: Add noImplicitAny, noUnusedLocals, noUnusedParameters and
         strictNullChecks
       body: null
     - hash: 58f7c8aaa2947739a34cf220b62cecc16a41f939
@@ -163,7 +172,7 @@
       author: Alexis Svinartchouk
       footers:
         change-type: minor
-      subject: 'Add BufferDisk: a Disk backed by a Buffer'
+      subject: "Add BufferDisk: a Disk backed by a Buffer"
       body: This allows using a buffer as if it was a Disk
 - version: 5.0.0
   date: 2018-11-29T14:06:27.000Z
@@ -172,13 +181,13 @@
       author: Alexis Svinartchouk
       footers:
         change-type: major
-      subject: 'Remove S3Disk, moved to https://github.com/balena-io-modules/s3-disk'
+      subject: Remove S3Disk, moved to https://github.com/balena-io-modules/s3-disk
       body: null
     - hash: 8ee4250548832932849b378f032f56745db5fb39
       author: Alexis Svinartchouk
       footers:
         change-type: patch
-      subject: 'Update requirements, lint.'
+      subject: Update requirements, lint.
       body: null
     - hash: 9f2653255ab5e7dc8c231cbbf929df1fbdc8badd
       author: Alexis Svinartchouk
@@ -193,7 +202,7 @@
       author: Alexis Svinartchouk
       footers:
         change-type: patch
-      subject: 'Fix resin-lint command, aws-sdk is a dependency, not a dev dependency'
+      subject: Fix resin-lint command, aws-sdk is a dependency, not a dev dependency
       body: null
 - version: 4.1.2
   date: 2018-04-02T13:32:35.000Z
@@ -203,13 +212,13 @@
       footers:
         change-type: patch
       subject: Add types to package.json
-      body: 'Connects-To: #15'
+      body: "Connects-To: #15"
     - hash: 1ce24d5c7bbc9872b49344ca3dc1a30136b3dc0e
       author: Alexis Svinartchouk
       footers:
         change-type: patch
       subject: Create .map.js files and publish them
-      body: 'Connects-To: #15'
+      body: "Connects-To: #15"
 - version: 4.1.1
   date: 2018-03-26T14:54:35.000Z
   commits:
@@ -218,7 +227,7 @@
       footers:
         change-type: patch
       subject: Fix DiskStream._read() method.
-      body: 'Connects-To: #13'
+      body: "Connects-To: #13"
 - version: 4.1.0
   date: 2018-03-06T12:17:26.000Z
   commits:
@@ -239,7 +248,7 @@
       footers:
         change-type: major
       subject: Update blockmap to 3.0.0
-      body: 'Connects-To: #7'
+      body: "Connects-To: #7"
 - version: 3.0.0
   date: 2018-03-02T18:06:09.000Z
   commits:
@@ -248,12 +257,12 @@
       footers:
         change-type: minor
       subject: Use fat arrow functions everywhere
-      body: 'Connects-To: #5'
+      body: "Connects-To: #5"
     - hash: 3453bcdb86d82be5e6048af1d18eda77e83dd436
       author: Alexis Svinartchouk
       footers:
         change-type: major
-      subject: 'Use promises everywhere, no more callbacks.'
+      subject: Use promises everywhere, no more callbacks.
       body: >-
         `Disk.read()` and `Disk.write()` now return Promises of objects with a
         `buffer`
@@ -274,7 +283,7 @@
       footers:
         change-type: patch
       subject: Use `Bluebird` instead of `Promise` for naming Bluebird
-      body: 'Connects-To: #5'
+      body: "Connects-To: #5"
     - hash: aa87376a30d60e1ab55d6f740dab38e311e51877
       author: Alexis Svinartchouk
       footers:
@@ -289,13 +298,13 @@
       footers:
         change-type: patch
       subject: Simplify DiskChunk constructor
-      body: 'Connects-To: #5'
+      body: "Connects-To: #5"
 - version: 2.0.0
   date: 2018-02-28T20:21:50.000Z
   commits:
     - hash: 1f45b476872ab2b68663e7e6239692ed56770405
       author: Alexis Svinartchouk
-      subject: 'rename variables, remove unnecessary if, remove console.log'
+      subject: rename variables, remove unnecessary if, remove console.log
       body: null
     - hash: 6e3f4638a05411262a45e6568a306bd53de7b133
       author: Alexis Svinartchouk
@@ -303,8 +312,7 @@
       body: >-
         Don't merge DiskChunks together, only slice them.
 
-        This will avoid unnecessary buffer copies and opens the way for
-        recording discarded areas as DiskChunks.
+        This will avoid unnecessary buffer copies and opens the way for recording discarded areas as DiskChunks.
     - hash: d8460bf77156daa17f8e5745516a7d750e533304
       author: Alexis Svinartchouk
       subject: record discards
@@ -321,8 +329,7 @@
 
         * cache disk capacity;
 
-        * change getStream prototype: getStream(position, length, highWaterMark,
-        callback);
+        * change getStream prototype: getStream(position, length, highWaterMark, callback);
     - hash: 4bfd402d6da218fa1a598f1bdff4f617c0c2cdeb
       author: Alexis Svinartchouk
       subject: add node 4 and 8 on travis
@@ -357,8 +364,7 @@
       body: null
     - hash: 2fa0e599a2026b3ea0008f1b26f1bda942bc6c07
       author: Alexis Svinartchouk
-      subject: >-
-        Allow omitting getStream() position and length parameters + tests +
+      subject: Allow omitting getStream() position and length parameters + tests +
         updated documentation
       body: null
     - hash: a017518b49bd7f5dd8e58250aaa144867ef6c164
@@ -375,14 +381,12 @@
       body: null
     - hash: b2e18004c4c1da812bc862e9bf1422dc96cba441
       author: Alexis Svinartchouk
-      subject: >-
-        bugfix: when a disk was raising an error with no errno property, the
-        error was ignored and the result was undefined
+      subject: "bugfix: when a disk was raising an error with no errno property, the
+        error was ignored and the result was undefined"
       body: null
     - hash: 4f389f4ef827d3252fd181d5823e894301dd00a5
       author: Alexis Svinartchouk
-      subject: >-
-        Update streamSha256 to get the hash only when the hash transform stream
+      subject: Update streamSha256 to get the hash only when the hash transform stream
         emits 'finish'.
       body: null
     - hash: 559e5624e432e90f902305b3ba77dfc4c4f1a435
@@ -403,8 +407,7 @@
       body: null
     - hash: 7913d219ff6a5c9eff27eb726e6e6f9ddd9ee0eb
       author: Alexis Svinartchouk
-      subject: >-
-        Use promises to simplify _readAccordingToPlan and make it read
+      subject: Use promises to simplify _readAccordingToPlan and make it read
         sequentially
       body: null
     - hash: 2e156f1f2b1ec00a3cbd85555bec070654ff6da9
@@ -439,4 +442,9 @@
       footers:
         change-type: patch
       subject: Add a `homepage` section to package.json
-      body: "So that an appropriate link gets displayed on https://www.npmjs.com/package/file-disk\r\nSee also https://github.com/resin-io/node-lkl/pull/36\r\n\r"
+      body: "So that an appropriate link gets displayed on
+        https://www.npmjs.com/package/file-disk\r
+
+        See also https://github.com/resin-io/node-lkl/pull/36\r
+
+        \r"
